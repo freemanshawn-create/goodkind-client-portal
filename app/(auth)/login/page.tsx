@@ -31,7 +31,7 @@ function LoginForm() {
           id="email"
           name="email"
           type="email"
-          placeholder="demo@client.com"
+          placeholder="amanda@goodkindco.com"
           required
           autoComplete="email"
           autoFocus
@@ -80,7 +80,7 @@ export default function LoginPage() {
             </Suspense>
 
             <p className="mt-4 text-center text-xs text-muted-foreground">
-              Demo credentials: demo@client.com / password123
+              Demo credentials: amanda@goodkindco.com / password123
             </p>
           </CardContent>
         </Card>
