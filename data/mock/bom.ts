@@ -102,4 +102,53 @@ export const mockBomItems: BomItem[] = [
     { inventoryStatus: "none" },
     { inventoryStatus: "none" },
   ]),
+
+  // --- New scheduled batches: mix of all statuses ---
+  ...makeBom("batch-021", "Deodorant", 20000, [
+    { inventoryStatus: "on-hand", onHand: 20000 },
+    { inventoryStatus: "on-hand", onHand: 20000 },
+    { inventoryStatus: "inbound", inbound: 20000, poNumber: "PO-4612", expectedDate: new Date("2026-05-08") },
+    { inventoryStatus: "on-hand", onHand: 20000 },
+  ]),
+  ...makeBom("batch-022", "Deodorant", 20000, [
+    { inventoryStatus: "inbound", inbound: 20000, poNumber: "PO-4625", expectedDate: new Date("2026-05-14") },
+    { inventoryStatus: "on-hand", onHand: 20000 },
+    { inventoryStatus: "inbound", inbound: 20000, poNumber: "PO-4626", expectedDate: new Date("2026-05-16") },
+    { inventoryStatus: "on-hand", onHand: 20000 },
+  ]),
+  ...makeBom("batch-023", "Deodorant", 20000, [
+    { inventoryStatus: "on-hand", onHand: 20000 },
+    { inventoryStatus: "none" },
+    { inventoryStatus: "inbound", inbound: 20000, poNumber: "PO-4640", expectedDate: new Date("2026-05-22") },
+    { inventoryStatus: "on-hand", onHand: 20000 },
+  ]),
+  ...makeBom("batch-024", "Body", 10000, [
+    { inventoryStatus: "none" },
+    { inventoryStatus: "inbound", inbound: 10000, poNumber: "PO-4655", expectedDate: new Date("2026-05-29") },
+    { inventoryStatus: "none" },
+    { inventoryStatus: "on-hand", onHand: 10000 },
+  ]),
+  ...makeBom("batch-025", "Deodorant", 21400, [
+    { inventoryStatus: "none" },
+    { inventoryStatus: "none" },
+    { inventoryStatus: "none" },
+    { inventoryStatus: "none" },
+  ]),
+  ...makeBom("batch-026", "Body", 15000, [
+    { inventoryStatus: "inbound", inbound: 15000, poNumber: "PO-4710", expectedDate: new Date("2026-06-12") },
+    { inventoryStatus: "inbound", inbound: 15000, poNumber: "PO-4711", expectedDate: new Date("2026-06-12") },
+    { inventoryStatus: "none" },
+    { inventoryStatus: "none" },
+  ]),
+
+  // --- Additional historical: all parts on hand ---
+  ...makeBom("batch-027", "Deodorant", 20000, allGreen(20000)),
+  ...makeBom("batch-028", "Body", 15000, allGreen(15000)),
+  ...makeBom("batch-029", "Deodorant", 20000, allGreen(20000)),
+  ...makeBom("batch-030", "Body", 15000, allGreen(15000)),
+  ...makeBom("batch-031", "Deodorant", 21400, allGreen(21400)),
+  ...makeBom("batch-032", "Deodorant", 20000, allGreen(20000)),
+  ...makeBom("batch-033", "Deodorant", 20000, allGreen(20000)),
+  ...makeBom("batch-034", "Deodorant", 21400, allGreen(21400)),
+  ...makeBom("batch-035", "Body", 10000, allGreen(10000)),
 ];
