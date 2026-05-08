@@ -7,6 +7,7 @@ export const mockUsers: User[] = [
     name: "Amanda Klohmann",
     company: "Dr. Squatch",
     brands: ["Dr. Squatch"],
+    cardCode: "C0006",
     role: "client",
     createdAt: new Date("2024-06-15"),
   },

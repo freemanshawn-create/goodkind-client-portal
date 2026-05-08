@@ -1,17 +1,18 @@
 import { mockBomItems } from "@/data/mock/bom";
-import type { BomItem } from "@/data/types";
+import { getAzureBomItemsForBatches } from "@/data/repositories/azure-bom";
+import type { BatchEntry, BomItem } from "@/data/types";
 
 function useAzureSql() {
   return !!process.env.AZURE_SQL_CONNECTION_STRING;
 }
 
 export async function getBomItemsForBatches(
-  batchIds: string[]
+  batches: Pick<BatchEntry, "id" | "itemKey" | "yield">[]
 ): Promise<BomItem[]> {
-  if (useAzureSql()) {
-    // Future: query Azure SQL
-    // return getAzureBomItems(batchIds);
-    return mockBomItems.filter((item) => batchIds.includes(item.batchId));
+  // Use live SAP data when any batch has an itemKey (i.e. came from Azure repo)
+  if (useAzureSql() && batches.some((b) => b.itemKey)) {
+    return getAzureBomItemsForBatches(batches);
   }
-  return mockBomItems.filter((item) => batchIds.includes(item.batchId));
+  const ids = batches.map((b) => b.id);
+  return mockBomItems.filter((item) => ids.includes(item.batchId));
 }

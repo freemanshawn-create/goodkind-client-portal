@@ -6,6 +6,8 @@ export interface User {
   avatar?: string;
   role: "client" | "admin";
   brands?: string[];
+  /** SAP B1 customer CardCode used to filter live Azure SQL queries. */
+  cardCode?: string;
   asanaUserId?: string;
   createdAt: Date;
 }
@@ -168,6 +170,8 @@ export interface BatchEntry {
   dueDate?: Date;
   status: BatchStatus;
   lockDate?: Date;
+  /** SAP item code of the finished good — used for live BOM lookups. */
+  itemKey?: string;
 }
 
 // -- BOM / Inventory --

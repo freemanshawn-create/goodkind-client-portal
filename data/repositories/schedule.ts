@@ -1,7 +1,19 @@
 import { mockBatchEntries } from "@/data/mock/schedule";
 import { getSheetsBatchEntries } from "@/data/repositories/sheets-schedule";
+import { getAzureBatchEntries } from "@/data/repositories/azure-schedule";
 import { addDays, subMonths, startOfDay } from "date-fns";
 import type { BatchEntry } from "@/data/types";
+
+export interface ScheduleFilter {
+  /** Brand names to filter mock/Sheets data by. Ignored when Azure is configured. */
+  brands?: string[];
+  /** SAP B1 customer CardCode used for live Azure queries. */
+  cardCode?: string;
+}
+
+function useAzureSql() {
+  return !!process.env.AZURE_SQL_CONNECTION_STRING;
+}
 
 function useGoogleSheets() {
   return !!(
@@ -11,18 +23,22 @@ function useGoogleSheets() {
   );
 }
 
-async function getAllEntries(brands?: string[]): Promise<BatchEntry[]> {
-  let entries: BatchEntry[];
+async function getAllEntries(filter?: ScheduleFilter): Promise<BatchEntry[]> {
+  // Azure SQL takes precedence when configured and we have a cardCode
+  if (useAzureSql() && filter?.cardCode) {
+    return getAzureBatchEntries(filter.cardCode);
+  }
 
+  let entries: BatchEntry[];
   if (useGoogleSheets()) {
     entries = await getSheetsBatchEntries();
   } else {
     entries = [...mockBatchEntries];
   }
 
-  // Filter by user's associated brands (client-level access control)
-  if (brands && brands.length > 0) {
-    entries = entries.filter((e) => brands.includes(e.brand));
+  // Filter by user's associated brands (client-level access control for mock/sheets)
+  if (filter?.brands && filter.brands.length > 0) {
+    entries = entries.filter((e) => filter.brands!.includes(e.brand));
   }
 
   return entries;
@@ -33,9 +49,9 @@ async function getAllEntries(brands?: string[]): Promise<BatchEntry[]> {
  * Excludes completed batches.
  */
 export async function getUpcomingBatches(
-  brands?: string[]
+  filter?: ScheduleFilter
 ): Promise<BatchEntry[]> {
-  const entries = await getAllEntries(brands);
+  const entries = await getAllEntries(filter);
   const today = startOfDay(new Date());
   const cutoff = addDays(today, 45);
 
@@ -53,9 +69,9 @@ export async function getUpcomingBatches(
  * Get completed batches from the past 12 months.
  */
 export async function getPastBatches(
-  brands?: string[]
+  filter?: ScheduleFilter
 ): Promise<BatchEntry[]> {
-  const entries = await getAllEntries(brands);
+  const entries = await getAllEntries(filter);
   const today = startOfDay(new Date());
   const twelveMonthsAgo = subMonths(today, 12);
 

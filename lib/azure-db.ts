@@ -36,9 +36,30 @@ export async function getPool(): Promise<sql.ConnectionPool> {
 }
 
 /**
+ * Marker for a value that should be inlined into the SQL text rather than
+ * passed as a bound parameter. Use ONLY with trusted, non-user input — most
+ * commonly schema or table names that can't be parameterized in T-SQL.
+ */
+export function raw(value: string): { __raw: string } {
+  return { __raw: value };
+}
+
+function isRaw(v: unknown): v is { __raw: string } {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    "__raw" in v &&
+    typeof (v as { __raw: unknown }).__raw === "string"
+  );
+}
+
+/**
  * Run a query and return the recordset.
  * Usage:
  *   const rows = await query<MyRow>`SELECT * FROM Orders WHERE ClientId = ${clientId}`;
+ *
+ * To inline an identifier (e.g. schema name) instead of binding it as a parameter:
+ *   const rows = await query<MyRow>`SELECT * FROM ${raw("GKCO_PROD")}.ORDR WHERE CardCode = ${code}`;
  */
 export async function query<T = sql.IRecordSet<unknown>>(
   strings: TemplateStringsArray,
@@ -49,12 +70,18 @@ export async function query<T = sql.IRecordSet<unknown>>(
 
   // Build parameterized query from tagged template literal
   let queryText = "";
+  let paramIdx = 0;
   strings.forEach((str, i) => {
     queryText += str;
     if (i < values.length) {
-      const paramName = `p${i}`;
-      request.input(paramName, values[i]);
-      queryText += `@${paramName}`;
+      const v = values[i];
+      if (isRaw(v)) {
+        queryText += v.__raw;
+      } else {
+        const paramName = `p${paramIdx++}`;
+        request.input(paramName, v);
+        queryText += `@${paramName}`;
+      }
     }
   });
 

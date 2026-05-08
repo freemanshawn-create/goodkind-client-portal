@@ -11,16 +11,19 @@ export default async function SchedulePage() {
   const user = await getSession();
   if (!user) redirect("/login");
 
-  // Admins see all brands; clients only see their associated brands
-  const brands = user.role === "admin" ? undefined : user.brands;
+  // Admins see everything; clients are scoped to their brands (mock) / cardCode (Azure)
+  const filter =
+    user.role === "admin"
+      ? {}
+      : { brands: user.brands, cardCode: user.cardCode };
 
   const [upcoming, past] = await Promise.all([
-    getUpcomingBatches(brands),
-    getPastBatches(brands),
+    getUpcomingBatches(filter),
+    getPastBatches(filter),
   ]);
 
-  const allBatchIds = [...upcoming, ...past].map((b) => b.id);
-  const bomItems = await getBomItemsForBatches(allBatchIds);
+  const allBatches = [...upcoming, ...past];
+  const bomItems = await getBomItemsForBatches(allBatches);
 
   return (
     <div className="space-y-6">

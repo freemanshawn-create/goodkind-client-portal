@@ -13,11 +13,15 @@ export default async function PurchaseOrdersPage() {
   const user = await getSession();
   if (!user) redirect("/login");
 
-  const brands = user.role === "admin" ? undefined : user.brands;
+  // Admins see everything; clients are scoped to their brands (mock) / cardCode (Azure)
+  const filter =
+    user.role === "admin"
+      ? {}
+      : { brands: user.brands, cardCode: user.cardCode };
 
   const [open, completed] = await Promise.all([
-    getOpenPurchaseOrders(brands),
-    getCompletedPurchaseOrders(brands),
+    getOpenPurchaseOrders(filter),
+    getCompletedPurchaseOrders(filter),
   ]);
 
   return (
