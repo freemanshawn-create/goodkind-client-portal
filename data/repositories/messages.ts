@@ -5,7 +5,6 @@ import {
   getAsanaMessagesByThread,
   getAsanaTotalUnreadCount,
 } from "@/data/repositories/asana-messages";
-import { getAsanaGid } from "@/lib/auth";
 import type { MessageThread, Message } from "@/data/types";
 
 function useAsana() {
@@ -14,9 +13,9 @@ function useAsana() {
 
 export async function getThreads(): Promise<MessageThread[]> {
   if (useAsana()) {
-    // Filter threads to only show ones the current user is involved in
-    const asanaGid = await getAsanaGid();
-    return getAsanaThreads(asanaGid);
+    // TODO: when messages tab is brought back, store Asana GID on the
+    // Clerk user publicMetadata and pass it here for per-user filtering.
+    return getAsanaThreads(null);
   }
   return [...mockThreads].sort(
     (a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime()

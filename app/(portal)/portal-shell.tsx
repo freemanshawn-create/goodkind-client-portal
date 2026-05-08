@@ -6,13 +6,11 @@ import { Header } from "@/components/layout/header";
 import { MobileNav } from "@/components/layout/mobile-nav";
 
 interface PortalShellProps {
-  userName: string;
   userCompany: string;
   children: React.ReactNode;
 }
 
 export function PortalShell({
-  userName,
   userCompany,
   children,
 }: PortalShellProps) {
@@ -31,7 +29,6 @@ export function PortalShell({
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header
-          userName={userName}
           userCompany={userCompany}
           onMobileMenuToggle={() => setMobileNavOpen(true)}
         />

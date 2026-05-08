@@ -8,11 +8,5 @@ export const ROUTES = {
   DOCUMENTS: "/documents",
   REPORTS: "/reports",
   SETTINGS: "/settings",
+  TEAM: "/team",
 } as const;
-
-export const MOCK_CREDENTIALS = {
-  email: "amanda@goodkindco.com",
-  password: "password123",
-} as const;
-
-export const SESSION_COOKIE_NAME = "goodkind-session";

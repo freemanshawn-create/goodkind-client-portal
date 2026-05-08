@@ -9,11 +9,6 @@ export default async function PortalLayout({
   const user = await getSession();
 
   return (
-    <PortalShell
-      userName={user?.name ?? "User"}
-      userCompany={user?.company ?? ""}
-    >
-      {children}
-    </PortalShell>
+    <PortalShell userCompany={user?.company ?? ""}>{children}</PortalShell>
   );
 }

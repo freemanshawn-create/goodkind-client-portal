@@ -1,33 +1,22 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
-import { SESSION_COOKIE_NAME } from "@/lib/constants";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-const publicPaths = ["/login"];
+// Routes that should remain accessible without authentication
+const isPublicRoute = createRouteMatcher([
+  "/login(.*)",
+  "/api/webhooks(.*)",
+]);
 
-export function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-
-  // Allow public paths, static assets, and API routes
-  if (
-    publicPaths.some((p) => pathname.startsWith(p)) ||
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/api") ||
-    pathname.includes(".")
-  ) {
-    return NextResponse.next();
+export default clerkMiddleware(async (auth, req) => {
+  if (!isPublicRoute(req)) {
+    await auth.protect();
   }
-
-  const session = request.cookies.get(SESSION_COOKIE_NAME)?.value;
-
-  if (!session) {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("from", pathname);
-    return NextResponse.redirect(loginUrl);
-  }
-
-  return NextResponse.next();
-}
+});
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: [
+    // Match everything except static assets and Next internals
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    // Always run for API routes
+    "/(api|trpc)(.*)",
+  ],
 };

@@ -1,92 +1,91 @@
-import { cookies } from "next/headers";
-import { SESSION_COOKIE_NAME, MOCK_CREDENTIALS } from "@/lib/constants";
-import { mockUsers } from "@/data/mock/users";
-import { getAsanaUserByEmail } from "@/lib/asana";
+import { auth, currentUser, clerkClient } from "@clerk/nextjs/server";
 import type { User } from "@/data/types";
 
-const ASANA_GID_COOKIE = "goodkind-asana-gid";
+/**
+ * Auth helpers backed by Clerk.
+ *
+ * The portal scopes data per client by reading the user's *active organization*
+ * public metadata. Each client's Clerk Organization should set:
+ *
+ *   {
+ *     "cardCode": "C0006",          // SAP B1 customer CardCode for live data
+ *     "brands":   ["Dr. Squatch"]    // brand names (kept for mock data fallback)
+ *   }
+ *
+ * Goodkind staff can be flagged as platform admins via the Clerk *user*
+ * publicMetadata: { "role": "admin" }. Admins see across all orgs.
+ */
 
-function useAsana() {
-  return !!process.env.ASANA_PAT;
+interface OrgPublicMetadata {
+  cardCode?: string;
+  brands?: string[];
 }
 
-export async function login(
-  email: string,
-  password: string
-): Promise<{ success: boolean; error?: string }> {
-  if (
-    email === MOCK_CREDENTIALS.email &&
-    password === MOCK_CREDENTIALS.password
-  ) {
-    const cookieStore = await cookies();
-
-    // Store the user's email as the session token
-    cookieStore.set(SESSION_COOKIE_NAME, email, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7, // 1 week
-      path: "/",
-    });
-
-    // If Asana is configured, look up the user's Asana GID by email
-    if (useAsana()) {
-      const asanaUser = await getAsanaUserByEmail(email);
-      if (asanaUser) {
-        cookieStore.set(ASANA_GID_COOKIE, asanaUser.gid, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
-          maxAge: 60 * 60 * 24 * 7,
-          path: "/",
-        });
-      }
-    }
-
-    return { success: true };
-  }
-  return { success: false, error: "Invalid email or password" };
-}
-
-export async function logout(): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.delete(SESSION_COOKIE_NAME);
-  cookieStore.delete(ASANA_GID_COOKIE);
+interface UserPublicMetadata {
+  role?: string;
 }
 
 export async function getSession(): Promise<User | null> {
-  const cookieStore = await cookies();
-  const sessionEmail = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+  const { userId, orgId } = await auth();
+  if (!userId) return null;
 
-  if (!sessionEmail) return null;
+  const user = await currentUser();
+  if (!user) return null;
 
-  // Handle old session format (backward compatibility)
-  const OLD_TOKEN = "mock-session-token-sunrise-naturals";
+  // Platform admin? (set on the user's publicMetadata in Clerk dashboard)
+  const platformRole = (user.publicMetadata as UserPublicMetadata | null)?.role;
+  const isPlatformAdmin = platformRole === "admin";
 
-  // Match against mock credentials (or old token format)
-  if (
-    sessionEmail === MOCK_CREDENTIALS.email ||
-    sessionEmail === OLD_TOKEN
-  ) {
-    const user = { ...mockUsers[0] };
+  // Pull org metadata (cardCode, brands) from the user's active org.
+  let cardCode: string | undefined;
+  let brands: string[] | undefined;
+  let company = "";
 
-    // Attach Asana GID if available
-    const asanaGid = cookieStore.get(ASANA_GID_COOKIE)?.value;
-    if (asanaGid) {
-      user.asanaUserId = asanaGid;
+  if (orgId) {
+    try {
+      const client = await clerkClient();
+      const org = await client.organizations.getOrganization({
+        organizationId: orgId,
+      });
+      company = org.name;
+      const meta = org.publicMetadata as OrgPublicMetadata;
+      cardCode = meta.cardCode;
+      brands = meta.brands;
+    } catch (err) {
+      console.error("Failed to load Clerk organization metadata:", err);
     }
-
-    return user;
   }
 
-  return null;
+  const fullName =
+    [user.firstName, user.lastName].filter(Boolean).join(" ").trim() ||
+    user.username ||
+    user.emailAddresses[0]?.emailAddress ||
+    "User";
+
+  return {
+    id: user.id,
+    email: user.emailAddresses[0]?.emailAddress ?? "",
+    name: fullName,
+    company: company || (isPlatformAdmin ? "Goodkind Co" : ""),
+    avatar: user.imageUrl,
+    role: isPlatformAdmin ? "admin" : "client",
+    brands,
+    cardCode,
+    createdAt: user.createdAt ? new Date(user.createdAt) : new Date(),
+  };
 }
 
 /**
- * Get the current user's Asana GID from the session cookie.
- * Returns null if not logged in or no Asana account linked.
+ * Returns true if the user can perform org-level admin actions
+ * (manage members, etc.). Either platform admin OR org admin.
  */
-export async function getAsanaGid(): Promise<string | null> {
-  const cookieStore = await cookies();
-  return cookieStore.get(ASANA_GID_COOKIE)?.value ?? null;
+export async function isOrgAdmin(): Promise<boolean> {
+  const { orgRole, userId } = await auth();
+  if (!userId) return false;
+  if (orgRole === "org:admin") return true;
+
+  const user = await currentUser();
+  return (
+    (user?.publicMetadata as UserPublicMetadata | null)?.role === "admin"
+  );
 }
