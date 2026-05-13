@@ -19,6 +19,7 @@ import type { User } from "@/data/types";
 interface OrgPublicMetadata {
   cardCode?: string;
   brands?: string[];
+  driveFolderId?: string;
 }
 
 interface UserPublicMetadata {
@@ -36,9 +37,10 @@ export async function getSession(): Promise<User | null> {
   const platformRole = (user.publicMetadata as UserPublicMetadata | null)?.role;
   const isPlatformAdmin = platformRole === "admin";
 
-  // Pull org metadata (cardCode, brands) from the user's active org.
+  // Pull org metadata (cardCode, brands, driveFolderId) from the user's active org.
   let cardCode: string | undefined;
   let brands: string[] | undefined;
+  let driveFolderId: string | undefined;
   let company = "";
 
   if (orgId) {
@@ -51,6 +53,7 @@ export async function getSession(): Promise<User | null> {
       const meta = org.publicMetadata as OrgPublicMetadata;
       cardCode = meta.cardCode;
       brands = meta.brands;
+      driveFolderId = meta.driveFolderId;
     } catch (err) {
       console.error("Failed to load Clerk organization metadata:", err);
     }
@@ -71,6 +74,7 @@ export async function getSession(): Promise<User | null> {
     role: isPlatformAdmin ? "admin" : "client",
     brands,
     cardCode,
+    driveFolderId,
     createdAt: user.createdAt ? new Date(user.createdAt) : new Date(),
   };
 }

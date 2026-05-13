@@ -8,6 +8,8 @@ export interface User {
   brands?: string[];
   /** SAP B1 customer CardCode used to filter live Azure SQL queries. */
   cardCode?: string;
+  /** Google Drive folder ID containing the client's shared documents. */
+  driveFolderId?: string;
   asanaUserId?: string;
   createdAt: Date;
 }

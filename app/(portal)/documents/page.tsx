@@ -1,4 +1,6 @@
-import { getDocuments, getFolders } from "@/data/repositories/documents";
+import { getDocumentsAndFolders } from "@/data/repositories/documents";
+import { getSession } from "@/lib/auth";
+import { redirect } from "next/navigation";
 import { mockUsers } from "@/data/mock/users";
 import { PageHeader } from "@/components/layout/page-header";
 import { DocumentsView } from "@/components/documents/documents-view";
@@ -6,10 +8,14 @@ import { DocumentsView } from "@/components/documents/documents-view";
 export const metadata = { title: "Documents" };
 
 export default async function DocumentsPage() {
-  const [documents, folders] = await Promise.all([
-    getDocuments(),
-    getFolders(),
-  ]);
+  const user = await getSession();
+  if (!user) redirect("/login");
+
+  const { documents, folders } = await getDocumentsAndFolders({
+    driveFolderId: user.driveFolderId,
+  });
+
+  const rootFolderId = user.driveFolderId;
 
   return (
     <div className="space-y-6">
@@ -21,7 +27,7 @@ export default async function DocumentsPage() {
       <DocumentsView
         documents={documents}
         folders={folders}
-        projects={[]}
+        rootFolderId={rootFolderId}
         users={mockUsers}
       />
     </div>

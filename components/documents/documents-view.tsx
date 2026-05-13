@@ -1,14 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   FileText,
-  Image,
+  Image as ImageIcon,
   FileSpreadsheet,
   File,
   Download,
   Upload,
   FolderOpen,
+  Folder as FolderIcon,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -23,11 +25,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { formatDate, formatFileSize } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { Document, Folder, Project, User } from "@/data/types";
+import type { Document, Folder, User } from "@/data/types";
 
 const typeIcons: Record<string, typeof FileText> = {
   spec: FileText,
-  artwork: Image,
+  artwork: ImageIcon,
   certificate: FileText,
   invoice: FileSpreadsheet,
   report: FileText,
@@ -46,111 +48,158 @@ const typeColors: Record<string, string> = {
 interface DocumentsViewProps {
   documents: Document[];
   folders: Folder[];
-  projects: Project[];
+  /** Top-level folder for the current user (Drive folder ID). */
+  rootFolderId?: string;
   users: User[];
 }
 
 export function DocumentsView({
   documents,
   folders,
-  projects,
+  rootFolderId,
   users,
 }: DocumentsViewProps) {
-  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  // Current folder being viewed. null = root.
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(
+    rootFolderId ?? null
+  );
 
-  const filteredDocs = selectedFolder
-    ? documents.filter((d) => d.folderId === selectedFolder)
-    : documents;
+  // Lookup helpers
+  const folderById = useMemo(() => {
+    const m = new Map<string, Folder>();
+    for (const f of folders) m.set(f.id, f);
+    return m;
+  }, [folders]);
+
+  // Build breadcrumb trail from root → currentFolder
+  const breadcrumbs = useMemo(() => {
+    if (!currentFolderId) return [];
+    const crumbs: Folder[] = [];
+    let cur: Folder | undefined = folderById.get(currentFolderId);
+    while (cur) {
+      crumbs.unshift(cur);
+      if (!cur.parentId) break;
+      cur = folderById.get(cur.parentId);
+    }
+    return crumbs;
+  }, [currentFolderId, folderById]);
+
+  // Subfolders + files inside the current folder
+  const visibleFolders = folders.filter(
+    (f) => f.parentId === currentFolderId && f.id !== currentFolderId
+  );
+  const visibleDocs = documents.filter((d) => d.folderId === currentFolderId);
 
   const getUserName = (id: string) =>
-    users.find((u) => u.id === id)?.name ?? "Unknown";
+    users.find((u) => u.id === id)?.name ?? id;
 
-  const getProjectName = (id?: string) =>
-    id ? projects.find((p) => p.id === id)?.name : undefined;
+  const emptyState =
+    visibleFolders.length === 0 && visibleDocs.length === 0;
 
   return (
-    <div className="flex flex-col gap-6 lg:flex-row">
-      {/* Folder sidebar */}
-      <div className="w-full shrink-0 lg:w-48">
-        <div className="space-y-1">
-          <button
-            onClick={() => setSelectedFolder(null)}
-            className={cn(
-              "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors",
-              !selectedFolder
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted"
-            )}
-          >
-            <FolderOpen className="h-4 w-4" />
-            All Files
-          </button>
-          {folders.map((folder) => {
-            const count = documents.filter(
-              (d) => d.folderId === folder.id
-            ).length;
-            return (
-              <button
-                key={folder.id}
-                onClick={() => setSelectedFolder(folder.id)}
-                className={cn(
-                  "flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors",
-                  selectedFolder === folder.id
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted"
-                )}
-              >
-                <span className="flex items-center gap-2 truncate">
-                  <FolderOpen className="h-4 w-4 shrink-0" />
-                  {folder.name}
+    <Card>
+      <CardContent className="p-0">
+        {/* Breadcrumbs + actions */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
+          <nav className="flex flex-wrap items-center gap-1 text-sm">
+            <button
+              onClick={() => setCurrentFolderId(rootFolderId ?? null)}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <FolderOpen className="inline h-4 w-4 -translate-y-0.5" />{" "}
+              Documents
+            </button>
+            {breadcrumbs.slice(1).map((crumb) => (
+              <span key={crumb.id} className="flex items-center gap-1">
+                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/60" />
+                <button
+                  onClick={() => setCurrentFolderId(crumb.id)}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  {crumb.name}
+                </button>
+              </span>
+            ))}
+            {breadcrumbs.length > 0 && currentFolderId && (
+              <span className="flex items-center gap-1">
+                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/60" />
+                <span className="font-medium">
+                  {folderById.get(currentFolderId)?.name ?? ""}
                 </span>
-                <span className="text-xs">{count}</span>
-              </button>
-            );
-          })}
+              </span>
+            )}
+          </nav>
+          <Button variant="outline" size="sm" disabled>
+            <Upload className="mr-1.5 h-3.5 w-3.5" />
+            Upload
+          </Button>
         </div>
-      </div>
 
-      {/* Documents table */}
-      <Card className="flex-1">
-        <CardContent className="p-0">
-          <div className="flex items-center justify-between border-b px-4 py-3">
-            <p className="text-sm text-muted-foreground">
-              {filteredDocs.length} file{filteredDocs.length !== 1 && "s"}
-            </p>
-            <Button variant="outline" size="sm" disabled>
-              <Upload className="mr-1.5 h-3.5 w-3.5" />
-              Upload
-            </Button>
+        {emptyState ? (
+          <div className="px-4 py-12 text-center text-sm text-muted-foreground">
+            This folder is empty.
           </div>
-
+        ) : (
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead className="hidden md:table-cell">Type</TableHead>
-                <TableHead className="hidden sm:table-cell">Project</TableHead>
                 <TableHead className="hidden lg:table-cell">
-                  Uploaded By
+                  Modified By
                 </TableHead>
                 <TableHead className="hidden sm:table-cell">Size</TableHead>
-                <TableHead>Date</TableHead>
+                <TableHead>Modified</TableHead>
                 <TableHead className="w-10"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredDocs.map((doc) => {
+              {/* Subfolders first */}
+              {visibleFolders.map((folder) => (
+                <TableRow
+                  key={folder.id}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => setCurrentFolderId(folder.id)}
+                >
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <FolderIcon className="h-4 w-4 shrink-0 text-amber-600" />
+                      <span className="truncate text-sm font-medium">
+                        {folder.name}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    <span className="text-xs text-muted-foreground">
+                      Folder
+                    </span>
+                  </TableCell>
+                  <TableCell className="hidden lg:table-cell" />
+                  <TableCell className="hidden sm:table-cell" />
+                  <TableCell />
+                  <TableCell>
+                    <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+                  </TableCell>
+                </TableRow>
+              ))}
+
+              {/* Then files */}
+              {visibleDocs.map((doc) => {
                 const Icon = typeIcons[doc.type] ?? File;
-                const projectName = getProjectName(doc.projectId);
                 return (
-                  <TableRow key={doc.id}>
+                  <TableRow key={doc.id} className="hover:bg-muted/30">
                     <TableCell>
-                      <div className="flex items-center gap-2">
+                      <a
+                        href={doc.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 hover:underline"
+                      >
                         <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
                         <span className="truncate text-sm font-medium">
                           {doc.name}
                         </span>
-                      </div>
+                      </a>
                     </TableCell>
                     <TableCell className="hidden md:table-cell">
                       <Badge
@@ -163,14 +212,9 @@ export function DocumentsView({
                         {doc.type}
                       </Badge>
                     </TableCell>
-                    <TableCell className="hidden sm:table-cell">
-                      <span className="text-xs text-muted-foreground">
-                        {projectName ?? "—"}
-                      </span>
-                    </TableCell>
                     <TableCell className="hidden lg:table-cell">
                       <span className="text-xs text-muted-foreground">
-                        {getUserName(doc.uploadedBy)}
+                        {doc.uploadedBy || getUserName(doc.uploadedBy)}
                       </span>
                     </TableCell>
                     <TableCell className="hidden sm:table-cell">
@@ -184,17 +228,22 @@ export function DocumentsView({
                       </span>
                     </TableCell>
                     <TableCell>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <a
+                        href={doc.url}
+                        download
+                        aria-label={`Download ${doc.name}`}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                      >
                         <Download className="h-3.5 w-3.5" />
-                      </Button>
+                      </a>
                     </TableCell>
                   </TableRow>
                 );
               })}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
-    </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
