@@ -9,28 +9,67 @@ import { StatsCards } from "@/components/dashboard/stats-cards";
 import { UpcomingDueDates } from "@/components/dashboard/upcoming-due-dates";
 import { LatestDocuments } from "@/components/dashboard/latest-documents";
 import { AtRiskBatches } from "@/components/dashboard/at-risk-batches";
+import type { BatchEntry, BomItem, Document, PurchaseOrder } from "@/data/types";
 
 export const metadata = { title: "Dashboard" };
+
+/**
+ * Run a data fetch with a soft fallback — if it throws (Azure SQL down,
+ * Drive API rate-limited, etc.) we log the error and return the fallback
+ * value so a single bad source doesn't take down the whole dashboard.
+ */
+async function safe<T>(
+  label: string,
+  fn: () => Promise<T>,
+  fallback: T
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    console.error(`Dashboard: ${label} failed:`, err);
+    return fallback;
+  }
+}
 
 export default async function DashboardPage() {
   const user = await getSession();
   if (!user) redirect("/login");
 
-  // Filter both POs and Schedule by the user's client (CardCode in Azure)
-  // Falls back to brand filtering for mock data when Azure isn't configured.
   const filter =
     user.role === "admin"
       ? {}
       : { brands: user.brands, cardCode: user.cardCode };
 
-  const [openPos, upcomingBatches, { documents }] = await Promise.all([
-    getOpenPurchaseOrders(filter),
-    getUpcomingBatches(filter),
-    getDocumentsAndFolders({ driveFolderId: user.driveFolderId }),
+  const [openPos, upcomingBatches, docsResult] = await Promise.all([
+    safe<PurchaseOrder[]>(
+      "Open POs",
+      () => getOpenPurchaseOrders(filter),
+      []
+    ),
+    safe<BatchEntry[]>(
+      "Upcoming batches",
+      () => getUpcomingBatches(filter),
+      []
+    ),
+    safe<{ documents: Document[] }>(
+      "Documents",
+      async () => {
+        const { documents } = await getDocumentsAndFolders({
+          driveFolderId: user.driveFolderId,
+        });
+        return { documents };
+      },
+      { documents: [] }
+    ),
   ]);
+  const documents = docsResult.documents;
 
-  // BOM lookup needs the batches' itemKeys to know which BOMs to fetch
-  const bomItems = await getBomItemsForBatches(upcomingBatches);
+  // BOM depends on upcomingBatches having loaded successfully
+  const bomItems: BomItem[] = await safe(
+    "BOM items",
+    () => getBomItemsForBatches(upcomingBatches),
+    []
+  );
 
   const unitsRemaining = openPos.reduce(
     (sum, po) => sum + (po.remainingQuantity ?? 0),
