@@ -7,7 +7,12 @@ export interface ScheduleFilter {
   brands?: string[];
   /** SAP B1 customer CardCode used for live Azure queries. */
   cardCode?: string;
+  /** Upcoming-schedule window in days (per-client, default 45). */
+  windowDays?: number;
 }
+
+/** Default upcoming-schedule horizon when a client has no override. */
+export const DEFAULT_SCHEDULE_WINDOW_DAYS = 45;
 
 async function getAllEntries(filter?: ScheduleFilter): Promise<BatchEntry[]> {
   // Live SAP/Azure data only. Without a cardCode (e.g. an admin with no active
@@ -19,15 +24,16 @@ async function getAllEntries(filter?: ScheduleFilter): Promise<BatchEntry[]> {
 }
 
 /**
- * Get upcoming batches: fill date within the next 45 days from today.
- * Excludes completed batches.
+ * Get upcoming batches: fill date within the next N days from today, where N is
+ * the client's configured window (default 45). Excludes completed batches.
  */
 export async function getUpcomingBatches(
   filter?: ScheduleFilter
 ): Promise<BatchEntry[]> {
   const entries = await getAllEntries(filter);
   const today = startOfDay(new Date());
-  const cutoff = addDays(today, 45);
+  const windowDays = filter?.windowDays ?? DEFAULT_SCHEDULE_WINDOW_DAYS;
+  const cutoff = addDays(today, windowDays);
 
   return entries
     .filter(

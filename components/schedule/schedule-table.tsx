@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState, useMemo, useCallback } from "react";
-import { format, isValid } from "date-fns";
+import { format, isValid, differenceInCalendarDays, startOfDay } from "date-fns";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -27,6 +27,10 @@ interface ScheduleTableProps {
   upcoming: BatchEntry[];
   past: BatchEntry[];
   bomItems: BomItem[];
+  /** Per-client yield markup % to reverse for display (e.g. 5 → ÷1.05). */
+  yieldAdjustmentPct?: number;
+  /** Upcoming-schedule window in days, for the section heading. */
+  windowDays?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -45,6 +49,18 @@ function fmtShortDate(date: Date | undefined): string {
 
 function fmtYield(num: number): string {
   return new Intl.NumberFormat("en-US").format(num);
+}
+
+/**
+ * Our stored batch yield is the PO quantity marked UP by a per-client buffer
+ * (e.g. +5%). To show the client their actual PO quantity we reverse the
+ * markup: displayed = stored ÷ (1 + pct/100). Returns the raw value when no
+ * adjustment is configured. Note: this affects DISPLAY only — BOM requirement
+ * math still uses the true (unadjusted) yield.
+ */
+function displayYield(rawYield: number, adjustmentPct?: number): number {
+  if (!adjustmentPct) return rawYield;
+  return Math.round(rawYield / (1 + adjustmentPct / 100));
 }
 
 // ---------------------------------------------------------------------------
@@ -96,27 +112,54 @@ function StatusDot({ status }: { status: BomInventoryStatus }) {
 }
 
 // ---------------------------------------------------------------------------
-// Lock status badge (reused from before)
+// Lock status badge \u2014 driven by how soon the batch fills:
+//   0\u201314 days  \u2192 hard lock (red)
+//   15\u201330 days \u2192 soft lock (orange)
+//   31+ days   \u2192 open (green)
+// Completed batches show no lock indicator.
+// Kept out of the component body so the "today" lookup isn't an impure call
+// during render (react-hooks/purity).
 // ---------------------------------------------------------------------------
 
+type LockTier = "hard" | "soft" | "open" | "none";
+
+function getLockTier(entry: BatchEntry): LockTier {
+  if (entry.status === "completed") return "none";
+  const days = differenceInCalendarDays(
+    startOfDay(entry.fillDate),
+    startOfDay(new Date())
+  );
+  if (days <= 14) return "hard";
+  if (days <= 30) return "soft";
+  return "open";
+}
+
 function LockStatus({ entry }: { entry: BatchEntry }) {
-  if (entry.status === "locked" || entry.status === "completed") {
+  const tier = getLockTier(entry);
+  if (tier === "none") {
+    return <span className="text-xs text-muted-foreground">{"\u2014"}</span>;
+  }
+  if (tier === "hard") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
         <Lock className="h-3 w-3" />
-        Locked
+        Hard lock
       </span>
     );
   }
-  if (entry.status === "pending-lock" && entry.lockDate) {
+  if (tier === "soft") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
         <CalendarDays className="h-3 w-3" />
-        {format(entry.lockDate, "MMM d")}
+        Soft lock
       </span>
     );
   }
-  return <span className="text-xs text-muted-foreground">{"\u2014"}</span>;
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+      Open
+    </span>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -197,10 +240,12 @@ function BatchTable({
   entries,
   bomItems,
   emptyMessage,
+  yieldAdjustmentPct,
 }: {
   entries: BatchEntry[];
   bomItems: BomItem[];
   emptyMessage: string;
+  yieldAdjustmentPct?: number;
 }) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
@@ -273,7 +318,7 @@ function BatchTable({
                         </p>
                       </td>
                       <td className="hidden whitespace-nowrap px-4 py-3 text-right text-xs tabular-nums md:table-cell">
-                        {fmtYield(entry.yield)}
+                        {fmtYield(displayYield(entry.yield, yieldAdjustmentPct))}
                       </td>
                       <td className="hidden whitespace-nowrap px-4 py-3 text-xs text-muted-foreground lg:table-cell">
                         {entry.salesOrder ?? "\u2014"}
@@ -334,7 +379,13 @@ function BatchTable({
 // Main component
 // ---------------------------------------------------------------------------
 
-export function ScheduleTable({ upcoming, past, bomItems }: ScheduleTableProps) {
+export function ScheduleTable({
+  upcoming,
+  past,
+  bomItems,
+  yieldAdjustmentPct,
+  windowDays = 45,
+}: ScheduleTableProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [showPast, setShowPast] = useState(false);
 
@@ -378,7 +429,7 @@ export function ScheduleTable({ upcoming, past, bomItems }: ScheduleTableProps) 
       {/* Upcoming section */}
       <div className="space-y-3">
         <h3 className="text-sm font-medium">
-          Upcoming &mdash; Next 45 Days
+          Upcoming &mdash; Next {windowDays} Days
           <span className="ml-2 font-normal text-muted-foreground">
             ({filteredUpcoming.length}{" "}
             {filteredUpcoming.length === 1 ? "batch" : "batches"})
@@ -387,7 +438,8 @@ export function ScheduleTable({ upcoming, past, bomItems }: ScheduleTableProps) 
         <BatchTable
           entries={filteredUpcoming}
           bomItems={bomItems}
-          emptyMessage="No upcoming batches in the next 45 days."
+          yieldAdjustmentPct={yieldAdjustmentPct}
+          emptyMessage={`No upcoming batches in the next ${windowDays} days.`}
         />
       </div>
 
@@ -412,6 +464,7 @@ export function ScheduleTable({ upcoming, past, bomItems }: ScheduleTableProps) 
           <BatchTable
             entries={filteredPast}
             bomItems={bomItems}
+            yieldAdjustmentPct={yieldAdjustmentPct}
             emptyMessage="No completed batches in the past 12 months."
           />
         )}

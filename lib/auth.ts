@@ -20,6 +20,8 @@ interface OrgPublicMetadata {
   cardCode?: string;
   brands?: string[];
   driveFolderId?: string;
+  scheduleWindowDays?: number;
+  yieldAdjustmentPct?: number;
 }
 
 interface UserPublicMetadata {
@@ -50,10 +52,13 @@ export async function getSession(): Promise<User | null> {
   const platformRole = (user.publicMetadata as UserPublicMetadata | null)?.role;
   const isPlatformAdmin = isPlatformAdminRole(platformRole);
 
-  // Pull org metadata (cardCode, brands, driveFolderId) from the user's active org.
+  // Pull org metadata (cardCode, brands, driveFolderId, settings) from the active org.
   let cardCode: string | undefined;
   let brands: string[] | undefined;
   let driveFolderId: string | undefined;
+  let scheduleWindowDays: number | undefined;
+  let yieldAdjustmentPct: number | undefined;
+  let companyLogoUrl: string | undefined;
   let company = "";
 
   if (orgId) {
@@ -63,10 +68,13 @@ export async function getSession(): Promise<User | null> {
         organizationId: orgId,
       });
       company = org.name;
+      if (org.hasImage) companyLogoUrl = org.imageUrl;
       const meta = org.publicMetadata as OrgPublicMetadata;
       cardCode = meta.cardCode;
       brands = meta.brands;
       driveFolderId = meta.driveFolderId;
+      scheduleWindowDays = meta.scheduleWindowDays;
+      yieldAdjustmentPct = meta.yieldAdjustmentPct;
     } catch (err) {
       console.error("Failed to load Clerk organization metadata:", err);
     }
@@ -83,11 +91,14 @@ export async function getSession(): Promise<User | null> {
     email: user.emailAddresses[0]?.emailAddress ?? "",
     name: fullName,
     company: company || (isPlatformAdmin ? "Goodkind Co" : ""),
+    companyLogoUrl,
     avatar: user.imageUrl,
     role: isPlatformAdmin ? "admin" : "client",
     brands,
     cardCode,
     driveFolderId,
+    scheduleWindowDays,
+    yieldAdjustmentPct,
     createdAt: user.createdAt ? new Date(user.createdAt) : new Date(),
   };
 }

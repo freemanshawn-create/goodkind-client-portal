@@ -11,6 +11,7 @@ export default async function PortalLayout({
   return (
     <PortalShell
       userCompany={user?.company ?? ""}
+      companyLogoUrl={user?.companyLogoUrl}
       isPlatformAdmin={user?.role === "admin"}
     >
       {children}

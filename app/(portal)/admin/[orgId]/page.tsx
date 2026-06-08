@@ -25,6 +25,7 @@ import { ClientForm } from "@/components/admin/client-form";
 import { InviteMemberForm } from "@/components/admin/invite-member-form";
 import { RemoveMemberButton } from "@/components/admin/remove-member-button";
 import { DeleteClient } from "@/components/admin/delete-client";
+import { LogoUpload } from "@/components/admin/logo-upload";
 
 export const metadata = { title: "Admin · Client" };
 
@@ -76,7 +77,26 @@ export default async function AdminClientPage({
               cardCode: client.cardCode,
               brands: client.brands,
               driveFolderId: client.driveFolderId,
+              scheduleWindowDays: client.scheduleWindowDays,
+              yieldAdjustmentPct: client.yieldAdjustmentPct,
             }}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base font-medium">Logo</CardTitle>
+          <CardDescription>
+            Upload this client&apos;s logo. It appears in the portal header for
+            their team.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <LogoUpload
+            orgId={client.id}
+            currentImageUrl={client.imageUrl}
+            name={client.name}
           />
         </CardContent>
       </Card>

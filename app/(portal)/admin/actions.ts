@@ -23,6 +23,19 @@ function str(raw: FormDataEntryValue | null): string {
   return (raw == null ? "" : String(raw)).trim();
 }
 
+/** Parse an optional numeric field, clamped to [min, max]; blank → undefined. */
+function parseOptionalNumber(
+  raw: FormDataEntryValue | null,
+  { min, max, integer }: { min: number; max: number; integer?: boolean }
+): number | undefined {
+  const s = str(raw);
+  if (s === "") return undefined;
+  let n = Number(s);
+  if (Number.isNaN(n)) return undefined;
+  if (integer) n = Math.round(n);
+  return Math.min(max, Math.max(min, n));
+}
+
 /**
  * Create a new client organization with its SAP CardCode and brand metadata.
  * The platform admin who creates it becomes the org's first admin, which also
@@ -43,6 +56,14 @@ export async function createClient(
   const cardCode = str(formData.get("cardCode"));
   const brands = parseBrands(formData.get("brands"));
   const driveFolderId = str(formData.get("driveFolderId"));
+  const scheduleWindowDays = parseOptionalNumber(
+    formData.get("scheduleWindowDays"),
+    { min: 1, max: 365, integer: true }
+  );
+  const yieldAdjustmentPct = parseOptionalNumber(
+    formData.get("yieldAdjustmentPct"),
+    { min: 0, max: 100 }
+  );
 
   if (!name) return { ok: false, message: "Client name is required." };
   if (!cardCode)
@@ -57,6 +78,8 @@ export async function createClient(
         cardCode,
         ...(brands.length ? { brands } : {}),
         ...(driveFolderId ? { driveFolderId } : {}),
+        ...(scheduleWindowDays != null ? { scheduleWindowDays } : {}),
+        ...(yieldAdjustmentPct != null ? { yieldAdjustmentPct } : {}),
       },
     });
     revalidatePath("/admin");
@@ -83,6 +106,14 @@ export async function updateClient(
   const cardCode = str(formData.get("cardCode"));
   const brands = parseBrands(formData.get("brands"));
   const driveFolderId = str(formData.get("driveFolderId"));
+  const scheduleWindowDays = parseOptionalNumber(
+    formData.get("scheduleWindowDays"),
+    { min: 1, max: 365, integer: true }
+  );
+  const yieldAdjustmentPct = parseOptionalNumber(
+    formData.get("yieldAdjustmentPct"),
+    { min: 0, max: 100 }
+  );
 
   if (!orgId) return { ok: false, message: "Missing organization id." };
   if (!name) return { ok: false, message: "Client name is required." };
@@ -97,6 +128,8 @@ export async function updateClient(
         cardCode,
         brands: brands.length ? brands : null,
         driveFolderId: driveFolderId || null,
+        scheduleWindowDays: scheduleWindowDays ?? null,
+        yieldAdjustmentPct: yieldAdjustmentPct ?? null,
       },
     });
     revalidatePath("/admin");
@@ -176,6 +209,40 @@ export async function removeMember(
   } catch (err) {
     console.error("removeMember failed:", err);
     return { ok: false, message: "Could not remove member. Check the logs." };
+  }
+}
+
+/** Upload/replace a client's logo (Clerk organization image). */
+export async function uploadClientLogo(
+  _prev: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  let uploaderUserId: string;
+  try {
+    uploaderUserId = await requirePlatformAdmin();
+  } catch {
+    return { ok: false, message: "Not authorized." };
+  }
+
+  const orgId = str(formData.get("orgId"));
+  const file = formData.get("logo");
+
+  if (!orgId) return { ok: false, message: "Missing organization id." };
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, message: "Choose an image file to upload." };
+  }
+
+  try {
+    const client = await clerkClient();
+    await client.organizations.updateOrganizationLogo(orgId, {
+      file,
+      uploaderUserId,
+    });
+    revalidatePath(`/admin/${orgId}`);
+    return { ok: true, message: "Logo updated." };
+  } catch (err) {
+    console.error("uploadClientLogo failed:", err);
+    return { ok: false, message: "Could not upload logo. Check the file and logs." };
   }
 }
 

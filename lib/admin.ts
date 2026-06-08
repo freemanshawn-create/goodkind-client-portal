@@ -16,6 +16,9 @@ export interface ClientSummary {
   cardCode?: string;
   brands?: string[];
   driveFolderId?: string;
+  scheduleWindowDays?: number;
+  yieldAdjustmentPct?: number;
+  imageUrl?: string;
   membersCount: number;
   createdAt: number;
 }
@@ -36,6 +39,8 @@ interface OrgPublicMetadata {
   cardCode?: string;
   brands?: string[];
   driveFolderId?: string;
+  scheduleWindowDays?: number;
+  yieldAdjustmentPct?: number;
 }
 
 /**
@@ -55,6 +60,8 @@ function toSummary(org: {
   name: string;
   slug: string | null;
   publicMetadata: unknown;
+  hasImage?: boolean;
+  imageUrl?: string;
   membersCount?: number;
   createdAt: number;
 }): ClientSummary {
@@ -66,6 +73,9 @@ function toSummary(org: {
     cardCode: meta.cardCode,
     brands: meta.brands,
     driveFolderId: meta.driveFolderId,
+    scheduleWindowDays: meta.scheduleWindowDays,
+    yieldAdjustmentPct: meta.yieldAdjustmentPct,
+    imageUrl: org.hasImage ? org.imageUrl : undefined,
     membersCount: org.membersCount ?? 0,
     createdAt: org.createdAt,
   };
@@ -85,6 +95,8 @@ export async function listClients(): Promise<ClientSummary[]> {
         name: org.name,
         slug: org.slug,
         publicMetadata: org.publicMetadata,
+        hasImage: org.hasImage,
+        imageUrl: org.imageUrl,
         membersCount: org.membersCount,
         createdAt: org.createdAt,
       })
@@ -128,6 +140,8 @@ export async function getClientDetail(
       name: org.name,
       slug: org.slug,
       publicMetadata: org.publicMetadata,
+      hasImage: org.hasImage,
+      imageUrl: org.imageUrl,
       membersCount: members.length,
       createdAt: org.createdAt,
     }),

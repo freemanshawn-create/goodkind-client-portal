@@ -3,6 +3,8 @@ export interface User {
   email: string;
   name: string;
   company: string;
+  /** Active org's logo (Clerk organization image), shown in the header. */
+  companyLogoUrl?: string;
   avatar?: string;
   role: "client" | "admin";
   brands?: string[];
@@ -10,6 +12,10 @@ export interface User {
   cardCode?: string;
   /** Google Drive folder ID containing the client's shared documents. */
   driveFolderId?: string;
+  /** Upcoming-schedule window in days for this client (default 45). */
+  scheduleWindowDays?: number;
+  /** Per-client yield adjustment %, set by platform admin (display calc TBD). */
+  yieldAdjustmentPct?: number;
   asanaUserId?: string;
   createdAt: Date;
 }

@@ -21,6 +21,8 @@ interface ClientFormProps {
     cardCode?: string;
     brands?: string[];
     driveFolderId?: string;
+    scheduleWindowDays?: number;
+    yieldAdjustmentPct?: number;
   };
 }
 
@@ -88,6 +90,47 @@ export function ClientForm({ client }: ClientFormProps) {
           defaultValue={client?.driveFolderId ?? ""}
           placeholder="1LSKE85wm..."
         />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="scheduleWindowDays">
+            Schedule window (days, optional)
+          </Label>
+          <Input
+            id="scheduleWindowDays"
+            name="scheduleWindowDays"
+            type="number"
+            min={1}
+            max={365}
+            step={1}
+            defaultValue={client?.scheduleWindowDays ?? ""}
+            placeholder="45"
+          />
+          <p className="text-xs text-muted-foreground">
+            How many days of upcoming batches to show. Default 45; set 90 for a
+            full quarter.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="yieldAdjustmentPct">
+            Yield adjustment % (optional)
+          </Label>
+          <Input
+            id="yieldAdjustmentPct"
+            name="yieldAdjustmentPct"
+            type="number"
+            min={0}
+            max={100}
+            step={0.5}
+            defaultValue={client?.yieldAdjustmentPct ?? ""}
+            placeholder="5"
+          />
+          <p className="text-xs text-muted-foreground">
+            Stored now; how it adjusts the displayed yield is pending sign-off
+            on the exact calculation.
+          </p>
+        </div>
       </div>
 
       <div className="flex justify-end">

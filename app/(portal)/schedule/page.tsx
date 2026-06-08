@@ -15,8 +15,13 @@ export default async function SchedulePage() {
 
   // Everyone — admins included — is scoped to their active org's SAP CardCode.
   // A platform admin viewing the Dr. Squatch team sees Dr. Squatch's live data.
-  // With no active org (no cardCode) there is nothing to show.
-  const filter = { brands: user.brands, cardCode: user.cardCode };
+  // With no active org (no cardCode) there is nothing to show. The upcoming
+  // window honors the client's per-org setting (default 45 days).
+  const filter = {
+    brands: user.brands,
+    cardCode: user.cardCode,
+    windowDays: user.scheduleWindowDays,
+  };
 
   // Soft-fail: if Azure is unreachable, render an empty state, not an error page.
   const [upcoming, past] = await Promise.all([
@@ -38,7 +43,13 @@ export default async function SchedulePage() {
         description="View your batch production schedule, dates, and status."
       />
 
-      <ScheduleTable upcoming={upcoming} past={past} bomItems={bomItems} />
+      <ScheduleTable
+        upcoming={upcoming}
+        past={past}
+        bomItems={bomItems}
+        yieldAdjustmentPct={user.yieldAdjustmentPct}
+        windowDays={user.scheduleWindowDays ?? 45}
+      />
     </div>
   );
 }

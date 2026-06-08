@@ -19,8 +19,13 @@ export default async function DashboardPage() {
   if (!user) redirect("/login");
 
   // Everyone — admins included — is scoped to their active org's SAP CardCode.
-  // With no active org (no cardCode) there is nothing to show.
-  const filter = { brands: user.brands, cardCode: user.cardCode };
+  // With no active org (no cardCode) there is nothing to show. The upcoming
+  // window honors the client's per-org setting (default 45 days).
+  const filter = {
+    brands: user.brands,
+    cardCode: user.cardCode,
+    windowDays: user.scheduleWindowDays,
+  };
 
   const [openPos, upcomingBatches, docsResult] = await Promise.all([
     safe<PurchaseOrder[]>(
