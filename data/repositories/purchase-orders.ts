@@ -1,5 +1,3 @@
-import { mockPurchaseOrders } from "@/data/mock/purchase-orders";
-import { subMonths, startOfDay } from "date-fns";
 import {
   getAzureOpenPurchaseOrders,
   getAzureCompletedPurchaseOrders,
@@ -7,70 +5,46 @@ import {
 import type { PurchaseOrder } from "@/data/types";
 
 export interface PurchaseOrderFilter {
-  /** Brand names to filter mock data by. Ignored when Azure is configured. */
+  /** Retained for callers; data is scoped by cardCode in SQL, not by brand. */
   brands?: string[];
   /** SAP B1 customer CardCode used for live Azure queries. */
   cardCode?: string;
 }
 
-function useAzureSql() {
-  return !!process.env.AZURE_SQL_CONNECTION_STRING;
-}
-
-function filterMockByBrands(brands?: string[]): PurchaseOrder[] {
-  if (!brands || brands.length === 0) return [...mockPurchaseOrders];
-  return mockPurchaseOrders.filter((po) => brands.includes(po.brand));
-}
-
 /**
  * Get open POs (remaining > 0), sorted by due date ascending.
+ *
+ * Live SAP/Azure data only. Without a cardCode there is no client to scope to,
+ * so return nothing rather than fall back to fabricated data.
  */
 export async function getOpenPurchaseOrders(
   filter?: PurchaseOrderFilter
 ): Promise<PurchaseOrder[]> {
-  if (useAzureSql() && filter?.cardCode) {
-    const rows = await getAzureOpenPurchaseOrders(filter.cardCode);
-    return rows.sort((a, b) => {
-      const aDate = a.dueDate?.getTime() ?? 0;
-      const bDate = b.dueDate?.getTime() ?? 0;
-      return aDate - bDate;
-    });
-  }
+  if (!filter?.cardCode) return [];
 
-  return filterMockByBrands(filter?.brands)
-    .filter((e) => e.status === "open")
-    .sort((a, b) => {
-      const aDate = a.dueDate?.getTime() ?? 0;
-      const bDate = b.dueDate?.getTime() ?? 0;
-      return aDate - bDate;
-    });
+  const rows = await getAzureOpenPurchaseOrders(filter.cardCode);
+  return rows.sort((a, b) => {
+    const aDate = a.dueDate?.getTime() ?? 0;
+    const bDate = b.dueDate?.getTime() ?? 0;
+    return aDate - bDate;
+  });
 }
 
 /**
  * Get completed POs from the past 12 months, sorted by completed date descending.
+ *
+ * Live SAP/Azure data only. Without a cardCode there is no client to scope to,
+ * so return nothing rather than fall back to fabricated data.
  */
 export async function getCompletedPurchaseOrders(
   filter?: PurchaseOrderFilter
 ): Promise<PurchaseOrder[]> {
-  if (useAzureSql() && filter?.cardCode) {
-    const rows = await getAzureCompletedPurchaseOrders(filter.cardCode);
-    return rows.sort((a, b) => {
-      const aDate = a.completedDate?.getTime() ?? 0;
-      const bDate = b.completedDate?.getTime() ?? 0;
-      return bDate - aDate;
-    });
-  }
+  if (!filter?.cardCode) return [];
 
-  const twelveMonthsAgo = subMonths(startOfDay(new Date()), 12);
-  return filterMockByBrands(filter?.brands)
-    .filter(
-      (e) =>
-        e.status === "completed" &&
-        (!e.completedDate || e.completedDate >= twelveMonthsAgo)
-    )
-    .sort((a, b) => {
-      const aDate = a.completedDate?.getTime() ?? 0;
-      const bDate = b.completedDate?.getTime() ?? 0;
-      return bDate - aDate;
-    });
+  const rows = await getAzureCompletedPurchaseOrders(filter.cardCode);
+  return rows.sort((a, b) => {
+    const aDate = a.completedDate?.getTime() ?? 0;
+    const bDate = b.completedDate?.getTime() ?? 0;
+    return bDate - aDate;
+  });
 }

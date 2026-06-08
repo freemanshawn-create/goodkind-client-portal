@@ -1,47 +1,21 @@
-import { mockBatchEntries } from "@/data/mock/schedule";
-import { getSheetsBatchEntries } from "@/data/repositories/sheets-schedule";
 import { getAzureBatchEntries } from "@/data/repositories/azure-schedule";
 import { addDays, subMonths, startOfDay } from "date-fns";
 import type { BatchEntry } from "@/data/types";
 
 export interface ScheduleFilter {
-  /** Brand names to filter mock/Sheets data by. Ignored when Azure is configured. */
+  /** Retained for callers; data is scoped by cardCode in SQL, not by brand. */
   brands?: string[];
   /** SAP B1 customer CardCode used for live Azure queries. */
   cardCode?: string;
 }
 
-function useAzureSql() {
-  return !!process.env.AZURE_SQL_CONNECTION_STRING;
-}
-
-function useGoogleSheets() {
-  return !!(
-    process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL &&
-    process.env.GOOGLE_PRIVATE_KEY &&
-    process.env.GOOGLE_SHEET_ID
-  );
-}
-
 async function getAllEntries(filter?: ScheduleFilter): Promise<BatchEntry[]> {
-  // Azure SQL takes precedence when configured and we have a cardCode
-  if (useAzureSql() && filter?.cardCode) {
-    return getAzureBatchEntries(filter.cardCode);
-  }
+  // Live SAP/Azure data only. Without a cardCode (e.g. an admin with no active
+  // org selected) there is no client to scope to, so return nothing rather than
+  // fall back to fabricated data.
+  if (!filter?.cardCode) return [];
 
-  let entries: BatchEntry[];
-  if (useGoogleSheets()) {
-    entries = await getSheetsBatchEntries();
-  } else {
-    entries = [...mockBatchEntries];
-  }
-
-  // Filter by user's associated brands (client-level access control for mock/sheets)
-  if (filter?.brands && filter.brands.length > 0) {
-    entries = entries.filter((e) => filter.brands!.includes(e.brand));
-  }
-
-  return entries;
+  return getAzureBatchEntries(filter.cardCode);
 }
 
 /**

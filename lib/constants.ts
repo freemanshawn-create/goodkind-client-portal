@@ -9,4 +9,5 @@ export const ROUTES = {
   REPORTS: "/reports",
   SETTINGS: "/settings",
   TEAM: "/team",
+  ADMIN: "/admin",
 } as const;

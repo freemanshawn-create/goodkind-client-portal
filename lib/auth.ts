@@ -26,6 +26,19 @@ interface UserPublicMetadata {
   role?: string;
 }
 
+/**
+ * Goodkind platform super-admins are flagged on the *user's* Clerk
+ * publicMetadata. The canonical value is "platform_admin"; the legacy "admin"
+ * value is still accepted so existing staff accounts keep access.
+ *
+ * This is deliberately separate from a *client* org admin, which is Clerk's
+ * built-in per-organization role `org:admin` (see isOrgAdmin). A platform admin
+ * administers every client; an org admin only manages their own org's members.
+ */
+function isPlatformAdminRole(role: string | undefined): boolean {
+  return role === "platform_admin" || role === "admin";
+}
+
 export async function getSession(): Promise<User | null> {
   const { userId, orgId } = await auth();
   if (!userId) return null;
@@ -35,7 +48,7 @@ export async function getSession(): Promise<User | null> {
 
   // Platform admin? (set on the user's publicMetadata in Clerk dashboard)
   const platformRole = (user.publicMetadata as UserPublicMetadata | null)?.role;
-  const isPlatformAdmin = platformRole === "admin";
+  const isPlatformAdmin = isPlatformAdminRole(platformRole);
 
   // Pull org metadata (cardCode, brands, driveFolderId) from the user's active org.
   let cardCode: string | undefined;
@@ -80,6 +93,19 @@ export async function getSession(): Promise<User | null> {
 }
 
 /**
+ * Returns true if the current user is a Goodkind platform super-admin
+ * (can administer any client). Based solely on the user's publicMetadata role.
+ */
+export async function isPlatformAdmin(): Promise<boolean> {
+  const { userId } = await auth();
+  if (!userId) return false;
+  const user = await currentUser();
+  return isPlatformAdminRole(
+    (user?.publicMetadata as UserPublicMetadata | null)?.role
+  );
+}
+
+/**
  * Returns true if the user can perform org-level admin actions
  * (manage members, etc.). Either platform admin OR org admin.
  */
@@ -89,7 +115,7 @@ export async function isOrgAdmin(): Promise<boolean> {
   if (orgRole === "org:admin") return true;
 
   const user = await currentUser();
-  return (
-    (user?.publicMetadata as UserPublicMetadata | null)?.role === "admin"
+  return isPlatformAdminRole(
+    (user?.publicMetadata as UserPublicMetadata | null)?.role
   );
 }

@@ -1,4 +1,5 @@
 import { getSession } from "@/lib/auth";
+import { safe } from "@/lib/safe";
 import { redirect } from "next/navigation";
 import { getOpenPurchaseOrders } from "@/data/repositories/purchase-orders";
 import { getUpcomingBatches } from "@/data/repositories/schedule";
@@ -13,32 +14,13 @@ import type { BatchEntry, BomItem, Document, PurchaseOrder } from "@/data/types"
 
 export const metadata = { title: "Dashboard" };
 
-/**
- * Run a data fetch with a soft fallback — if it throws (Azure SQL down,
- * Drive API rate-limited, etc.) we log the error and return the fallback
- * value so a single bad source doesn't take down the whole dashboard.
- */
-async function safe<T>(
-  label: string,
-  fn: () => Promise<T>,
-  fallback: T
-): Promise<T> {
-  try {
-    return await fn();
-  } catch (err) {
-    console.error(`Dashboard: ${label} failed:`, err);
-    return fallback;
-  }
-}
-
 export default async function DashboardPage() {
   const user = await getSession();
   if (!user) redirect("/login");
 
-  const filter =
-    user.role === "admin"
-      ? {}
-      : { brands: user.brands, cardCode: user.cardCode };
+  // Everyone — admins included — is scoped to their active org's SAP CardCode.
+  // With no active org (no cardCode) there is nothing to show.
+  const filter = { brands: user.brands, cardCode: user.cardCode };
 
   const [openPos, upcomingBatches, docsResult] = await Promise.all([
     safe<PurchaseOrder[]>(

@@ -11,6 +11,7 @@ import {
   Settings,
   LogOut,
   Users,
+  ShieldCheck,
 } from "lucide-react";
 import { SignOutButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
@@ -25,7 +26,11 @@ const navItems = [
   { href: ROUTES.REPORTS, label: "Reports", icon: BarChart3 },
 ];
 
-export function Sidebar() {
+export function Sidebar({
+  isPlatformAdmin = false,
+}: {
+  isPlatformAdmin?: boolean;
+}) {
   const pathname = usePathname();
 
   return (
@@ -63,6 +68,20 @@ export function Sidebar() {
 
       <div className="space-y-1 px-3 pb-4">
         <div className="mx-0 mb-3 h-px bg-sidebar-border" />
+        {isPlatformAdmin && (
+          <Link
+            href={ROUTES.ADMIN}
+            className={cn(
+              "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+              pathname.startsWith(ROUTES.ADMIN)
+                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                : "text-sidebar-foreground/60 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+            )}
+          >
+            <ShieldCheck className="h-4 w-4" />
+            Admin
+          </Link>
+        )}
         <Link
           href={ROUTES.TEAM}
           className={cn(

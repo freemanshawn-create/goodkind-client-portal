@@ -9,6 +9,11 @@ export default async function PortalLayout({
   const user = await getSession();
 
   return (
-    <PortalShell userCompany={user?.company ?? ""}>{children}</PortalShell>
+    <PortalShell
+      userCompany={user?.company ?? ""}
+      isPlatformAdmin={user?.role === "admin"}
+    >
+      {children}
+    </PortalShell>
   );
 }

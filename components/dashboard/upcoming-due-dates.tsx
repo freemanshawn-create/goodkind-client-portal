@@ -9,14 +9,25 @@ interface UpcomingDueDatesProps {
   pos: PurchaseOrder[];
 }
 
-export function UpcomingDueDates({ pos }: UpcomingDueDatesProps) {
-  // Filter to POs with a due date in the next 30 days, sorted ascending
+// Kept out of the component body so the time lookup isn't an impure call
+// during render (react-hooks/purity).
+function selectUpcoming(pos: PurchaseOrder[]): PurchaseOrder[] {
   const now = Date.now();
   const horizon = now + 30 * 24 * 60 * 60 * 1000;
-  const upcoming = pos
-    .filter((p) => p.dueDate && p.dueDate.getTime() >= now && p.dueDate.getTime() <= horizon)
-    .sort((a, b) => (a.dueDate!.getTime() - b.dueDate!.getTime()))
+  return pos
+    .filter(
+      (p) =>
+        p.dueDate &&
+        p.dueDate.getTime() >= now &&
+        p.dueDate.getTime() <= horizon
+    )
+    .sort((a, b) => a.dueDate!.getTime() - b.dueDate!.getTime())
     .slice(0, 6);
+}
+
+export function UpcomingDueDates({ pos }: UpcomingDueDatesProps) {
+  // Filter to POs with a due date in the next 30 days, sorted ascending
+  const upcoming = selectUpcoming(pos);
 
   return (
     <Card>
