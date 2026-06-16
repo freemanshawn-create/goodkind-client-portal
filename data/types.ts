@@ -8,6 +8,12 @@ export interface User {
   avatar?: string;
   role: "client" | "admin";
   brands?: string[];
+  /**
+   * SAP item-code brand prefixes (e.g. ["DRS"]) used to scope finished-goods
+   * queries to this client's own brand(s). Empty/undefined → all finished
+   * goods for the cardCode.
+   */
+  brandCodes?: string[];
   /** SAP B1 customer CardCode used to filter live Azure SQL queries. */
   cardCode?: string;
   /** Google Drive folder ID containing the client's shared documents. */
@@ -164,21 +170,33 @@ export interface ShippingInfo {
 
 export type BatchStatus = "locked" | "pending-lock" | "scheduled" | "completed";
 
+/**
+ * One OUTPUT line of a production batch step (SAP @BMM_PNMAST/@BMM_PNITEM,
+ * U_LINETYPE=7). The schedule shows the full production view: finished-good
+ * fill steps and the bulk/compound (WIP) steps that feed them.
+ */
 export interface BatchEntry {
   id: string;
-  compoundDate: Date;
-  fillDate: Date;
-  yield: number;
-  brand: string;
-  productType: string;
-  productName: string;
+  /** Scheduled start date of this step (U_SCHEDULEDSTARTDATE). */
+  scheduledDate: Date;
+  /** Super batch number tying the steps of one run together (U_SUPERBATCHNO). */
+  superBatchNo: string;
+  /** This step's batch number (U_BATCHNO). */
   batchNumber: string;
+  /** Client part code (OITM.U_BPREF). */
+  productCode: string;
+  /** Cleaned item description (OITM.ItemName). */
+  productName: string;
+  /** Theoretical output / yield for this step (U_STDQTY). */
+  yield: number;
+  /** Finished-good fill step vs bulk/compound (WIP) step. */
+  stepType: "fill" | "bulk";
+  /** GKC sales order number (U_SONUMBER), when tied to one. */
   salesOrder?: string;
-  purchaseOrder?: string;
-  dueDate?: Date;
+  /** Client PO number from the linked sales order (ORDR.NumAtCard). */
+  clientPO?: string;
   status: BatchStatus;
-  lockDate?: Date;
-  /** SAP item code of the finished good — used for live BOM lookups. */
+  /** SAP item code — used for live BOM lookups (FG steps). */
   itemKey?: string;
 }
 
@@ -204,16 +222,30 @@ export type BomSummaryStatus = "all-clear" | "partial-risk" | "at-risk";
 
 export type PurchaseOrderStatus = "open" | "completed";
 
+/**
+ * One LINE of a client order (SAP Sales Order line). The "Purchase Orders" tab
+ * lists order lines, mirroring the canonical semantic-layer query.
+ */
 export interface PurchaseOrder {
   id: string;
+  /** Client's PO number (ORDR.NumAtCard / "Customer PO"). */
   poNumber: string;
+  /** GKC sales order number (ORDR.DocNum). */
   soNumber: string;
-  brand: string;
+  /** Client part code (OITM.U_BPREF). */
+  productCode: string;
+  /** Cleaned item description (OITM.ItemName). */
   productName: string;
+  /** Order posting date (ORDR.DocDate). */
+  postingDate?: Date;
+  /** Line ship/due date (RDR1.ShipDate). */
   dueDate?: Date;
-  totalQuantity: number;
-  deliveredQuantity: number;
+  /** Ordered quantity for this line (RDR1.Quantity). */
+  orderedQuantity: number;
+  /** Remaining/open quantity for this line (RDR1.OpenQty). */
   remainingQuantity: number;
+  /** Sales unit, normalized to "CASE" or "EACH" (RDR1.unitMsr). */
+  salesUnit: string;
   status: PurchaseOrderStatus;
   completedDate?: Date;
 }

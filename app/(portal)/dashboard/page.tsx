@@ -23,6 +23,7 @@ export default async function DashboardPage() {
   // window honors the client's per-org setting (default 45 days).
   const filter = {
     brands: user.brands,
+    brandCodes: user.brandCodes,
     cardCode: user.cardCode,
     windowDays: user.scheduleWindowDays,
   };

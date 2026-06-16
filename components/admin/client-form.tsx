@@ -20,6 +20,7 @@ interface ClientFormProps {
     name: string;
     cardCode?: string;
     brands?: string[];
+    brandCodes?: string[];
     driveFolderId?: string;
     scheduleWindowDays?: number;
     yieldAdjustmentPct?: number;
@@ -32,6 +33,21 @@ export function ClientForm({ client }: ClientFormProps) {
   const [state, formAction, pending] = useActionState(action, initialState);
   const formRef = useRef<HTMLFormElement>(null);
 
+  // Remount the form whenever the persisted client values change (e.g. after a
+  // successful save revalidates the page). This re-initializes the uncontrolled
+  // inputs cleanly, avoiding "default value changed after init" warnings when a
+  // previously-empty field — like Brand codes — gets its first value.
+  const formKey = JSON.stringify({
+    id: client?.id,
+    name: client?.name,
+    cardCode: client?.cardCode,
+    brands: client?.brands,
+    brandCodes: client?.brandCodes,
+    driveFolderId: client?.driveFolderId,
+    scheduleWindowDays: client?.scheduleWindowDays,
+    yieldAdjustmentPct: client?.yieldAdjustmentPct,
+  });
+
   useEffect(() => {
     if (!state.message) return;
     if (state.ok) {
@@ -43,7 +59,7 @@ export function ClientForm({ client }: ClientFormProps) {
   }, [state, isEdit]);
 
   return (
-    <form ref={formRef} action={formAction} className="space-y-4">
+    <form key={formKey} ref={formRef} action={formAction} className="space-y-4">
       {isEdit && <input type="hidden" name="orgId" value={client!.id} />}
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -69,17 +85,36 @@ export function ClientForm({ client }: ClientFormProps) {
         </div>
       </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="brands">Brands (optional, comma-separated)</Label>
-        <Input
-          id="brands"
-          name="brands"
-          defaultValue={client?.brands?.join(", ") ?? ""}
-          placeholder="Dr. Squatch"
-        />
-        <p className="text-xs text-muted-foreground">
-          Live data is scoped by CardCode; brands are kept for reference only.
-        </p>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="brands">Brands (optional, comma-separated)</Label>
+          <Input
+            id="brands"
+            name="brands"
+            defaultValue={client?.brands?.join(", ") ?? ""}
+            placeholder="Dr. Squatch"
+          />
+          <p className="text-xs text-muted-foreground">
+            Display names, kept for reference only.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="brandCodes">
+            Brand codes (optional, comma-separated)
+          </Label>
+          <Input
+            id="brandCodes"
+            name="brandCodes"
+            defaultValue={client?.brandCodes?.join(", ") ?? ""}
+            placeholder="DRS"
+          />
+          <p className="text-xs text-muted-foreground">
+            SAP item-code prefixes (the <code>DRS</code> in{" "}
+            <code>90-DRS-…</code>). Limits orders &amp; schedule to this
+            client&apos;s finished goods. Leave blank to show all of the
+            CardCode&apos;s finished goods.
+          </p>
+        </div>
       </div>
 
       <div className="space-y-2">

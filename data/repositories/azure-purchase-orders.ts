@@ -1,82 +1,81 @@
 /**
  * Azure SQL-backed Purchase Orders repository.
  *
- * Maps SAP B1 Sales Orders (ORDR + RDR1) to the portal's PurchaseOrder type.
- * From the client's perspective, their PO to GKC is recorded in GKC's SAP as
- * a Sales Order, with the client's PO # stored in ORDR.NumAtCard and GKC's
- * SO # in ORDR.DocNum.
+ * The portal's "Purchase Orders" tab shows the client's orders to Goodkind,
+ * which are recorded in GKC's SAP B1 as Sales Orders (ORDR + RDR1). The client's
+ * own PO # is ORDR.NumAtCard; GKC's SO # is ORDR.DocNum.
+ *
+ * This mirrors the canonical semantic-layer query: one row per order LINE
+ * (ORDR × RDR1 × OITM), excluding raw-material (10-) and packaging (20-) lines,
+ * with the line ship date as the due date and the item master supplying the
+ * client part code (U_BPREF) and description.
  */
 
 import { query, raw } from "@/lib/azure-db";
+import {
+  excludeMaterialsFilter,
+  brandCodeFilter,
+} from "@/data/repositories/item-filters";
 import type { PurchaseOrder, PurchaseOrderStatus } from "@/data/types";
 
 const SCHEMA = raw("GKCO_PROD");
 
-interface OrdrRow {
+interface OrderLineRow {
   DocEntry: number;
+  LineNum: number;
   DocNum: number;
   NumAtCard: string | null;
-  CardCode: string;
-  CardName: string;
-  CardName2: string;
-  DocDate: Date;
-  DocDueDate: Date | null;
-  DocStatus: string; // 'O' = Open, 'C' = Closed
+  DocDate: Date | null;
   CloseDate: Date | null;
+  ShipDate: Date | null;
+  Quantity: number;
+  OpenQty: number;
+  UnitMsr: string | null;
+  ProductCode: string | null;
   ProductName: string | null;
-  TotalQty: number;
-  DeliveredQty: number;
-  RemainingQty: number;
 }
 
 /**
- * Fetch SAP Sales Orders for a given customer CardCode, aggregating line totals.
- * Uses a CTE to roll up RDR1 lines into per-SO totals and pick a representative
- * product name (first non-empty line description).
+ * Fetch order LINES for a customer CardCode at the given document status,
+ * excluding materials/packaging and (optionally) scoping to brand codes.
  */
-async function fetchOrders(
+async function fetchOrderLines(
   cardCode: string,
-  status: "O" | "C"
-): Promise<OrdrRow[]> {
-  // Tagged-template parameterizes cardCode and status safely
-  const rows = await query<OrdrRow>`
-    WITH lines AS (
-      SELECT
-        l.DocEntry,
-        SUM(l.Quantity)    AS TotalQty,
-        SUM(l.DelivrdQty)  AS DeliveredQty,
-        SUM(l.OpenQty)     AS RemainingQty,
-        MIN(CASE WHEN l.Dscription IS NOT NULL AND l.Dscription <> '' THEN l.LineNum END) AS FirstLineNum
-      FROM ${SCHEMA}.RDR1 l
-      GROUP BY l.DocEntry
-    ),
-    firstLine AS (
-      SELECT l.DocEntry, l.Dscription
-      FROM ${SCHEMA}.RDR1 l
-      INNER JOIN lines ON lines.DocEntry = l.DocEntry AND lines.FirstLineNum = l.LineNum
-    )
+  status: "O" | "C",
+  brandCodes?: string[]
+): Promise<OrderLineRow[]> {
+  const noMaterials = excludeMaterialsFilter("l.ItemCode");
+  const brandFilter = brandCodeFilter("l.ItemCode", brandCodes);
+
+  return query<OrderLineRow>`
     SELECT
-      o.DocEntry, o.DocNum, o.NumAtCard, o.CardCode, o.CardName,
-      o.DocDate, o.DocDueDate, o.DocStatus,
+      o.DocEntry,
+      l.LineNum,
+      o.DocNum,
+      o.NumAtCard,
+      o.DocDate,
       o.UpdateDate AS CloseDate,
-      f.Dscription AS ProductName,
-      ISNULL(lines.TotalQty, 0)     AS TotalQty,
-      ISNULL(lines.DeliveredQty, 0) AS DeliveredQty,
-      ISNULL(lines.RemainingQty, 0) AS RemainingQty
+      l.ShipDate,
+      l.Quantity,
+      l.OpenQty,
+      l.unitMsr      AS UnitMsr,
+      itm.U_BPREF    AS ProductCode,
+      itm.ItemName   AS ProductName
     FROM ${SCHEMA}.ORDR o
-    LEFT JOIN lines     ON lines.DocEntry     = o.DocEntry
-    LEFT JOIN firstLine f ON f.DocEntry        = o.DocEntry
+    INNER JOIN ${SCHEMA}.RDR1 l   ON o.DocEntry = l.DocEntry
+    INNER JOIN ${SCHEMA}.OITM itm ON l.ItemCode = itm.ItemCode
     WHERE o.CardCode  = ${cardCode}
       AND o.DocStatus = ${status}
       AND o.CANCELED  = 'N'
-    ORDER BY o.DocDate DESC
+      AND ${noMaterials}
+      AND ${brandFilter}
+    ORDER BY o.DocNum DESC, l.ShipDate
   `;
-  return rows;
 }
 
 /**
  * Strip the "FG, <Brand>, " prefix from SAP item descriptions so the portal
- * shows just the product name, e.g.
+ * shows just the product, e.g.
  *   "FG, Dr. Squatch, Fresh Falls Lotion, US, Retail, 10 fl oz, v2"
  *   → "Fresh Falls Lotion, US, Retail, 10 fl oz, v2"
  */
@@ -85,17 +84,23 @@ function cleanProductName(raw: string | null): string {
   return raw.replace(/^FG,\s*[^,]+,\s*/i, "").trim();
 }
 
-function mapRow(row: OrdrRow, status: PurchaseOrderStatus): PurchaseOrder {
+/** SAP sales unit is per-line; normalize to CASE vs EACH for display. */
+function mapSalesUnit(unitMsr: string | null): string {
+  return (unitMsr ?? "").trim().toUpperCase() === "CASE" ? "CASE" : "EACH";
+}
+
+function mapRow(row: OrderLineRow, status: PurchaseOrderStatus): PurchaseOrder {
   return {
-    id: `so-${row.DocEntry}`,
+    id: `so-${row.DocEntry}-${row.LineNum}`,
     poNumber: row.NumAtCard ?? "",
     soNumber: String(row.DocNum),
-    brand: row.CardName,
+    productCode: row.ProductCode ?? "",
     productName: cleanProductName(row.ProductName),
-    dueDate: row.DocDueDate ? new Date(row.DocDueDate) : undefined,
-    totalQuantity: Number(row.TotalQty),
-    deliveredQuantity: Number(row.DeliveredQty),
-    remainingQuantity: Number(row.RemainingQty),
+    postingDate: row.DocDate ? new Date(row.DocDate) : undefined,
+    dueDate: row.ShipDate ? new Date(row.ShipDate) : undefined,
+    orderedQuantity: Number(row.Quantity ?? 0),
+    remainingQuantity: Number(row.OpenQty ?? 0),
+    salesUnit: mapSalesUnit(row.UnitMsr),
     status,
     completedDate:
       status === "completed" && row.CloseDate
@@ -105,16 +110,18 @@ function mapRow(row: OrdrRow, status: PurchaseOrderStatus): PurchaseOrder {
 }
 
 export async function getAzureOpenPurchaseOrders(
-  cardCode: string
+  cardCode: string,
+  brandCodes?: string[]
 ): Promise<PurchaseOrder[]> {
-  const rows = await fetchOrders(cardCode, "O");
+  const rows = await fetchOrderLines(cardCode, "O", brandCodes);
   return rows.map((r) => mapRow(r, "open"));
 }
 
 export async function getAzureCompletedPurchaseOrders(
-  cardCode: string
+  cardCode: string,
+  brandCodes?: string[]
 ): Promise<PurchaseOrder[]> {
-  const rows = await fetchOrders(cardCode, "C");
+  const rows = await fetchOrderLines(cardCode, "C", brandCodes);
   // Filter to past 12 months by close/update date
   const cutoff = new Date();
   cutoff.setMonth(cutoff.getMonth() - 12);

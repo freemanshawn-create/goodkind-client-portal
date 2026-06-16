@@ -76,6 +76,7 @@ export default async function AdminClientPage({
               name: client.name,
               cardCode: client.cardCode,
               brands: client.brands,
+              brandCodes: client.brandCodes,
               driveFolderId: client.driveFolderId,
               scheduleWindowDays: client.scheduleWindowDays,
               yieldAdjustmentPct: client.yieldAdjustmentPct,

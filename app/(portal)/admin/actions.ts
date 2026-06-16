@@ -19,6 +19,21 @@ function parseBrands(raw: FormDataEntryValue | null): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Parse the SAP brand-code field (e.g. "DRS, JUK"). Codes map to the middle
+ * segment of finished-goods item codes (90-<CODE>-<seq>), so we normalize to
+ * uppercase alphanumerics and dedupe. Used to scope a client's views to their
+ * own brand(s).
+ */
+function parseBrandCodes(raw: FormDataEntryValue | null): string[] {
+  if (!raw) return [];
+  const codes = String(raw)
+    .split(/[,\n]/)
+    .map((c) => c.trim().toUpperCase().replace(/[^A-Z0-9]/g, ""))
+    .filter(Boolean);
+  return Array.from(new Set(codes));
+}
+
 function str(raw: FormDataEntryValue | null): string {
   return (raw == null ? "" : String(raw)).trim();
 }
@@ -55,6 +70,7 @@ export async function createClient(
   const name = str(formData.get("name"));
   const cardCode = str(formData.get("cardCode"));
   const brands = parseBrands(formData.get("brands"));
+  const brandCodes = parseBrandCodes(formData.get("brandCodes"));
   const driveFolderId = str(formData.get("driveFolderId"));
   const scheduleWindowDays = parseOptionalNumber(
     formData.get("scheduleWindowDays"),
@@ -77,6 +93,7 @@ export async function createClient(
       publicMetadata: {
         cardCode,
         ...(brands.length ? { brands } : {}),
+        ...(brandCodes.length ? { brandCodes } : {}),
         ...(driveFolderId ? { driveFolderId } : {}),
         ...(scheduleWindowDays != null ? { scheduleWindowDays } : {}),
         ...(yieldAdjustmentPct != null ? { yieldAdjustmentPct } : {}),
@@ -105,6 +122,7 @@ export async function updateClient(
   const name = str(formData.get("name"));
   const cardCode = str(formData.get("cardCode"));
   const brands = parseBrands(formData.get("brands"));
+  const brandCodes = parseBrandCodes(formData.get("brandCodes"));
   const driveFolderId = str(formData.get("driveFolderId"));
   const scheduleWindowDays = parseOptionalNumber(
     formData.get("scheduleWindowDays"),
@@ -127,6 +145,7 @@ export async function updateClient(
       publicMetadata: {
         cardCode,
         brands: brands.length ? brands : null,
+        brandCodes: brandCodes.length ? brandCodes : null,
         driveFolderId: driveFolderId || null,
         scheduleWindowDays: scheduleWindowDays ?? null,
         yieldAdjustmentPct: yieldAdjustmentPct ?? null,

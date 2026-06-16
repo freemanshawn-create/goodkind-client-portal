@@ -27,8 +27,6 @@ interface ScheduleTableProps {
   upcoming: BatchEntry[];
   past: BatchEntry[];
   bomItems: BomItem[];
-  /** Per-client yield markup % to reverse for display (e.g. 5 → ÷1.05). */
-  yieldAdjustmentPct?: number;
   /** Upcoming-schedule window in days, for the section heading. */
   windowDays?: number;
 }
@@ -37,30 +35,13 @@ interface ScheduleTableProps {
 // Formatters
 // ---------------------------------------------------------------------------
 
-function fmtDate(date: Date | undefined): string {
-  if (!date || !isValid(date)) return "\u2014";
-  return format(date, "MMM d, yyyy");
-}
-
 function fmtShortDate(date: Date | undefined): string {
-  if (!date || !isValid(date)) return "\u2014";
+  if (!date || !isValid(date)) return "—";
   return format(date, "MMM d");
 }
 
-function fmtYield(num: number): string {
+function fmtQty(num: number): string {
   return new Intl.NumberFormat("en-US").format(num);
-}
-
-/**
- * Our stored batch yield is the PO quantity marked UP by a per-client buffer
- * (e.g. +5%). To show the client their actual PO quantity we reverse the
- * markup: displayed = stored ÷ (1 + pct/100). Returns the raw value when no
- * adjustment is configured. Note: this affects DISPLAY only — BOM requirement
- * math still uses the true (unadjusted) yield.
- */
-function displayYield(rawYield: number, adjustmentPct?: number): number {
-  if (!adjustmentPct) return rawYield;
-  return Math.round(rawYield / (1 + adjustmentPct / 100));
 }
 
 // ---------------------------------------------------------------------------
@@ -112,13 +93,11 @@ function StatusDot({ status }: { status: BomInventoryStatus }) {
 }
 
 // ---------------------------------------------------------------------------
-// Lock status badge \u2014 driven by how soon the batch fills:
-//   0\u201314 days  \u2192 hard lock (red)
-//   15\u201330 days \u2192 soft lock (orange)
-//   31+ days   \u2192 open (green)
-// Completed batches show no lock indicator.
-// Kept out of the component body so the "today" lookup isn't an impure call
-// during render (react-hooks/purity).
+// Lock status badge — driven by how soon the step is scheduled:
+//   0–14 days  → hard lock (red)
+//   15–30 days → soft lock (orange)
+//   31+ days   → open (green)
+// Completed steps show no lock indicator.
 // ---------------------------------------------------------------------------
 
 type LockTier = "hard" | "soft" | "open" | "none";
@@ -126,7 +105,7 @@ type LockTier = "hard" | "soft" | "open" | "none";
 function getLockTier(entry: BatchEntry): LockTier {
   if (entry.status === "completed") return "none";
   const days = differenceInCalendarDays(
-    startOfDay(entry.fillDate),
+    startOfDay(entry.scheduledDate),
     startOfDay(new Date())
   );
   if (days <= 14) return "hard";
@@ -137,7 +116,7 @@ function getLockTier(entry: BatchEntry): LockTier {
 function LockStatus({ entry }: { entry: BatchEntry }) {
   const tier = getLockTier(entry);
   if (tier === "none") {
-    return <span className="text-xs text-muted-foreground">{"\u2014"}</span>;
+    return <span className="text-xs text-muted-foreground">—</span>;
   }
   if (tier === "hard") {
     return (
@@ -170,7 +149,7 @@ function BomDetailPanel({ items }: { items: BomItem[] }) {
   if (items.length === 0) {
     return (
       <p className="text-xs text-muted-foreground">
-        No component data available for this batch.
+        No component data available for this step.
       </p>
     );
   }
@@ -192,19 +171,19 @@ function BomDetailPanel({ items }: { items: BomItem[] }) {
             </div>
             <div className="text-[11px] text-muted-foreground">
               {item.inventoryStatus === "on-hand" && (
-                <span>{fmtYield(item.quantityOnHand)} on hand</span>
+                <span>{fmtQty(item.quantityOnHand)} on hand</span>
               )}
               {item.inventoryStatus === "inbound" && (
                 <span>
-                  {fmtYield(item.quantityInbound)} inbound
+                  {fmtQty(item.quantityInbound)} inbound
                   {item.poNumber && ` (${item.poNumber})`}
                   {item.expectedDate &&
-                    ` \u2014 ETA ${fmtShortDate(item.expectedDate)}`}
+                    ` — ETA ${fmtShortDate(item.expectedDate)}`}
                 </span>
               )}
               {item.inventoryStatus === "none" && (
                 <span className="text-red-600">
-                  Needed: {fmtYield(item.quantityRequired)}
+                  Needed: {fmtQty(item.quantityRequired)}
                 </span>
               )}
             </div>
@@ -220,14 +199,13 @@ function BomDetailPanel({ items }: { items: BomItem[] }) {
 // ---------------------------------------------------------------------------
 
 const TABLE_HEADERS = [
-  { label: "Compound", className: "" },
-  { label: "Fill", className: "" },
+  { label: "Scheduled", className: "" },
   { label: "Batch #", className: "hidden sm:table-cell" },
+  { label: "Item Code", className: "hidden md:table-cell" },
   { label: "Product", className: "" },
-  { label: "Yield", className: "hidden md:table-cell text-right" },
+  { label: "Planned Units", className: "hidden md:table-cell text-right" },
   { label: "SO #", className: "hidden lg:table-cell" },
-  { label: "PO #", className: "hidden lg:table-cell" },
-  { label: "Due", className: "hidden sm:table-cell" },
+  { label: "Client PO", className: "hidden lg:table-cell" },
   { label: "Lock Status", className: "" },
   { label: "Parts", className: "text-center" },
 ];
@@ -240,12 +218,10 @@ function BatchTable({
   entries,
   bomItems,
   emptyMessage,
-  yieldAdjustmentPct,
 }: {
   entries: BatchEntry[];
   bomItems: BomItem[];
   emptyMessage: string;
-  yieldAdjustmentPct?: number;
 }) {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
@@ -301,13 +277,13 @@ function BatchTable({
                       className="border-b border-border/50 cursor-pointer transition-colors hover:bg-card/30"
                     >
                       <td className="whitespace-nowrap px-4 py-3 text-xs">
-                        {fmtShortDate(entry.compoundDate)}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-xs">
-                        {fmtShortDate(entry.fillDate)}
+                        {fmtShortDate(entry.scheduledDate)}
                       </td>
                       <td className="hidden whitespace-nowrap px-4 py-3 text-xs font-mono text-muted-foreground sm:table-cell">
                         {entry.batchNumber}
+                      </td>
+                      <td className="hidden whitespace-nowrap px-4 py-3 text-xs font-mono text-muted-foreground md:table-cell">
+                        {entry.productCode || "—"}
                       </td>
                       <td className="px-4 py-3">
                         <p className="text-xs font-medium leading-tight">
@@ -318,16 +294,13 @@ function BatchTable({
                         </p>
                       </td>
                       <td className="hidden whitespace-nowrap px-4 py-3 text-right text-xs tabular-nums md:table-cell">
-                        {fmtYield(displayYield(entry.yield, yieldAdjustmentPct))}
+                        {fmtQty(entry.yield)}
                       </td>
                       <td className="hidden whitespace-nowrap px-4 py-3 text-xs text-muted-foreground lg:table-cell">
-                        {entry.salesOrder ?? "\u2014"}
+                        {entry.salesOrder ?? "—"}
                       </td>
                       <td className="hidden whitespace-nowrap px-4 py-3 text-xs text-muted-foreground lg:table-cell">
-                        {entry.purchaseOrder ?? "\u2014"}
-                      </td>
-                      <td className="hidden whitespace-nowrap px-4 py-3 text-xs sm:table-cell">
-                        {fmtDate(entry.dueDate)}
+                        {entry.clientPO ?? "—"}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
                         <LockStatus entry={entry} />
@@ -383,7 +356,6 @@ export function ScheduleTable({
   upcoming,
   past,
   bomItems,
-  yieldAdjustmentPct,
   windowDays = 45,
 }: ScheduleTableProps) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -396,9 +368,10 @@ export function ScheduleTable({
       return entries.filter(
         (e) =>
           e.productName.toLowerCase().includes(q) ||
+          e.productCode.toLowerCase().includes(q) ||
           e.batchNumber.toLowerCase().includes(q) ||
           (e.salesOrder && e.salesOrder.toLowerCase().includes(q)) ||
-          (e.purchaseOrder && e.purchaseOrder.toLowerCase().includes(q))
+          (e.clientPO && e.clientPO.toLowerCase().includes(q))
       );
     },
     [searchQuery]
@@ -419,7 +392,7 @@ export function ScheduleTable({
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          placeholder="Search product, batch #, SO #, PO #..."
+          placeholder="Search product, batch #, item code, SO #, PO #..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-9"
@@ -432,14 +405,13 @@ export function ScheduleTable({
           Upcoming &mdash; Next {windowDays} Days
           <span className="ml-2 font-normal text-muted-foreground">
             ({filteredUpcoming.length}{" "}
-            {filteredUpcoming.length === 1 ? "batch" : "batches"})
+            {filteredUpcoming.length === 1 ? "step" : "steps"})
           </span>
         </h3>
         <BatchTable
           entries={filteredUpcoming}
           bomItems={bomItems}
-          yieldAdjustmentPct={yieldAdjustmentPct}
-          emptyMessage={`No upcoming batches in the next ${windowDays} days.`}
+          emptyMessage={`No scheduled production in the next ${windowDays} days.`}
         />
       </div>
 
@@ -454,7 +426,7 @@ export function ScheduleTable({
           ) : (
             <ChevronDown className="h-4 w-4" />
           )}
-          Completed Batches
+          Completed Steps
           <span className="font-normal text-muted-foreground">
             ({filteredPast.length})
           </span>
@@ -464,8 +436,7 @@ export function ScheduleTable({
           <BatchTable
             entries={filteredPast}
             bomItems={bomItems}
-            yieldAdjustmentPct={yieldAdjustmentPct}
-            emptyMessage="No completed batches in the past 12 months."
+            emptyMessage="No completed steps in the past 12 months."
           />
         )}
       </div>

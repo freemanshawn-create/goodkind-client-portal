@@ -19,6 +19,7 @@ export default async function SchedulePage() {
   // window honors the client's per-org setting (default 45 days).
   const filter = {
     brands: user.brands,
+    brandCodes: user.brandCodes,
     cardCode: user.cardCode,
     windowDays: user.scheduleWindowDays,
   };
@@ -47,7 +48,6 @@ export default async function SchedulePage() {
         upcoming={upcoming}
         past={past}
         bomItems={bomItems}
-        yieldAdjustmentPct={user.yieldAdjustmentPct}
         windowDays={user.scheduleWindowDays ?? 45}
       />
     </div>

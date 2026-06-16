@@ -13,7 +13,7 @@ interface PurchaseOrdersTableProps {
 }
 
 function fmtDate(date: Date | undefined): string {
-  if (!date || !isValid(date)) return "\u2014";
+  if (!date || !isValid(date)) return "—";
   return format(date, "MMM d, yyyy");
 }
 
@@ -22,12 +22,13 @@ function fmtQty(num: number): string {
 }
 
 const TABLE_HEADERS = [
-  { label: "PO #", className: "" },
-  { label: "SO #", className: "" },
+  { label: "Customer PO", className: "" },
+  { label: "SO #", className: "hidden lg:table-cell" },
+  { label: "Product Code", className: "hidden md:table-cell" },
   { label: "Product", className: "" },
   { label: "Due Date", className: "hidden sm:table-cell" },
-  { label: "Total Qty", className: "hidden md:table-cell text-right" },
-  { label: "Delivered", className: "hidden md:table-cell text-right" },
+  { label: "Ordered", className: "hidden md:table-cell text-right" },
+  { label: "Unit", className: "hidden lg:table-cell" },
   { label: "Remaining", className: "text-right" },
 ];
 
@@ -62,10 +63,13 @@ function POTable({
                   className="border-b border-border/50 transition-colors hover:bg-card/30"
                 >
                   <td className="whitespace-nowrap px-4 py-3 text-xs font-medium">
-                    {po.poNumber}
+                    {po.poNumber || "—"}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-xs text-muted-foreground">
+                  <td className="hidden whitespace-nowrap px-4 py-3 text-xs text-muted-foreground lg:table-cell">
                     {po.soNumber}
+                  </td>
+                  <td className="hidden whitespace-nowrap px-4 py-3 text-xs font-mono text-muted-foreground md:table-cell">
+                    {po.productCode || "—"}
                   </td>
                   <td className="px-4 py-3">
                     <p className="text-xs font-medium leading-tight">
@@ -79,10 +83,10 @@ function POTable({
                     {fmtDate(po.dueDate)}
                   </td>
                   <td className="hidden whitespace-nowrap px-4 py-3 text-right text-xs tabular-nums md:table-cell">
-                    {fmtQty(po.totalQuantity)}
+                    {fmtQty(po.orderedQuantity)}
                   </td>
-                  <td className="hidden whitespace-nowrap px-4 py-3 text-right text-xs tabular-nums md:table-cell">
-                    {fmtQty(po.deliveredQuantity)}
+                  <td className="hidden whitespace-nowrap px-4 py-3 text-xs text-muted-foreground lg:table-cell">
+                    {po.salesUnit}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right text-xs tabular-nums">
                     <span
@@ -131,6 +135,7 @@ export function PurchaseOrdersTable({
       return entries.filter(
         (e) =>
           e.productName.toLowerCase().includes(q) ||
+          e.productCode.toLowerCase().includes(q) ||
           e.poNumber.toLowerCase().includes(q) ||
           e.soNumber.toLowerCase().includes(q)
       );
@@ -153,28 +158,28 @@ export function PurchaseOrdersTable({
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
-          placeholder="Search PO #, SO #, product..."
+          placeholder="Search PO #, SO #, product code, product..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-9"
         />
       </div>
 
-      {/* Open POs */}
+      {/* Open order lines */}
       <div className="space-y-3">
         <h3 className="text-sm font-medium">
-          Open Purchase Orders
+          Open Order Lines
           <span className="ml-2 font-normal text-muted-foreground">
             ({filteredOpen.length})
           </span>
         </h3>
         <POTable
           entries={filteredOpen}
-          emptyMessage="No open purchase orders."
+          emptyMessage="No open order lines."
         />
       </div>
 
-      {/* Completed POs (collapsible) */}
+      {/* Completed order lines (collapsible) */}
       <div className="space-y-3">
         <button
           onClick={() => setShowCompleted(!showCompleted)}
@@ -185,7 +190,7 @@ export function PurchaseOrdersTable({
           ) : (
             <ChevronDown className="h-4 w-4" />
           )}
-          Completed Purchase Orders
+          Completed Order Lines
           <span className="font-normal text-muted-foreground">
             ({filteredCompleted.length})
           </span>
@@ -194,7 +199,7 @@ export function PurchaseOrdersTable({
         {showCompleted && (
           <POTable
             entries={filteredCompleted}
-            emptyMessage="No completed purchase orders in the past 12 months."
+            emptyMessage="No completed order lines in the past 12 months."
           />
         )}
       </div>

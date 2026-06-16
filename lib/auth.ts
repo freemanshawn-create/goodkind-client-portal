@@ -19,6 +19,7 @@ import type { User } from "@/data/types";
 interface OrgPublicMetadata {
   cardCode?: string;
   brands?: string[];
+  brandCodes?: string[];
   driveFolderId?: string;
   scheduleWindowDays?: number;
   yieldAdjustmentPct?: number;
@@ -55,6 +56,7 @@ export async function getSession(): Promise<User | null> {
   // Pull org metadata (cardCode, brands, driveFolderId, settings) from the active org.
   let cardCode: string | undefined;
   let brands: string[] | undefined;
+  let brandCodes: string[] | undefined;
   let driveFolderId: string | undefined;
   let scheduleWindowDays: number | undefined;
   let yieldAdjustmentPct: number | undefined;
@@ -72,6 +74,7 @@ export async function getSession(): Promise<User | null> {
       const meta = org.publicMetadata as OrgPublicMetadata;
       cardCode = meta.cardCode;
       brands = meta.brands;
+      brandCodes = meta.brandCodes;
       driveFolderId = meta.driveFolderId;
       scheduleWindowDays = meta.scheduleWindowDays;
       yieldAdjustmentPct = meta.yieldAdjustmentPct;
@@ -95,6 +98,7 @@ export async function getSession(): Promise<User | null> {
     avatar: user.imageUrl,
     role: isPlatformAdmin ? "admin" : "client",
     brands,
+    brandCodes,
     cardCode,
     driveFolderId,
     scheduleWindowDays,

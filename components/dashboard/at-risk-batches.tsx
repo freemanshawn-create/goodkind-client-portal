@@ -28,7 +28,7 @@ export function AtRiskBatches({ batches, bomItems }: AtRiskBatchesProps) {
       const items = itemsByBatch.get(b.id) ?? [];
       return items.some((i) => i.inventoryStatus === "none");
     })
-    .sort((a, b) => a.fillDate.getTime() - b.fillDate.getTime())
+    .sort((a, b) => a.scheduledDate.getTime() - b.scheduledDate.getTime())
     .slice(0, 5);
 
   if (atRisk.length === 0) {
@@ -71,7 +71,7 @@ export function AtRiskBatches({ batches, bomItems }: AtRiskBatchesProps) {
                     {batch.productName}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Batch #{batch.batchNumber} · Fill {formatDate(batch.fillDate)}
+                    Batch #{batch.batchNumber} · {formatDate(batch.scheduledDate)}
                   </p>
                 </div>
                 <span className="ml-3 shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">

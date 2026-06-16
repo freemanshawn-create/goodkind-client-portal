@@ -15,6 +15,7 @@ export interface ClientSummary {
   slug: string | null;
   cardCode?: string;
   brands?: string[];
+  brandCodes?: string[];
   driveFolderId?: string;
   scheduleWindowDays?: number;
   yieldAdjustmentPct?: number;
@@ -38,6 +39,7 @@ export interface ClientDetail extends ClientSummary {
 interface OrgPublicMetadata {
   cardCode?: string;
   brands?: string[];
+  brandCodes?: string[];
   driveFolderId?: string;
   scheduleWindowDays?: number;
   yieldAdjustmentPct?: number;
@@ -72,6 +74,7 @@ function toSummary(org: {
     slug: org.slug,
     cardCode: meta.cardCode,
     brands: meta.brands,
+    brandCodes: meta.brandCodes,
     driveFolderId: meta.driveFolderId,
     scheduleWindowDays: meta.scheduleWindowDays,
     yieldAdjustmentPct: meta.yieldAdjustmentPct,

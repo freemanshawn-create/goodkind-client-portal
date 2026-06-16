@@ -7,6 +7,12 @@ import type { PurchaseOrder } from "@/data/types";
 export interface PurchaseOrderFilter {
   /** Retained for callers; data is scoped by cardCode in SQL, not by brand. */
   brands?: string[];
+  /**
+   * SAP item-code brand prefixes (e.g. ["DRS"]). When set, only finished goods
+   * of these brands are shown; when omitted, all finished goods for the
+   * cardCode are shown. Filters out cross-brand lines on a client's orders.
+   */
+  brandCodes?: string[];
   /** SAP B1 customer CardCode used for live Azure queries. */
   cardCode?: string;
 }
@@ -22,7 +28,10 @@ export async function getOpenPurchaseOrders(
 ): Promise<PurchaseOrder[]> {
   if (!filter?.cardCode) return [];
 
-  const rows = await getAzureOpenPurchaseOrders(filter.cardCode);
+  const rows = await getAzureOpenPurchaseOrders(
+    filter.cardCode,
+    filter.brandCodes
+  );
   return rows.sort((a, b) => {
     const aDate = a.dueDate?.getTime() ?? 0;
     const bDate = b.dueDate?.getTime() ?? 0;
@@ -42,7 +51,10 @@ export async function getCompletedPurchaseOrders(
 ): Promise<PurchaseOrder[]> {
   if (!filter?.cardCode) return [];
 
-  const rows = await getAzureCompletedPurchaseOrders(filter.cardCode);
+  const rows = await getAzureCompletedPurchaseOrders(
+    filter.cardCode,
+    filter.brandCodes
+  );
   return rows.sort((a, b) => comparePoNumberDesc(a.poNumber, b.poNumber));
 }
 

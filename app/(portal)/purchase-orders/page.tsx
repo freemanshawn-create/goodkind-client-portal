@@ -17,7 +17,11 @@ export default async function PurchaseOrdersPage() {
 
   // Everyone — admins included — is scoped to their active org's SAP CardCode.
   // With no active org (no cardCode) there is nothing to show.
-  const filter = { brands: user.brands, cardCode: user.cardCode };
+  const filter = {
+    brands: user.brands,
+    brandCodes: user.brandCodes,
+    cardCode: user.cardCode,
+  };
 
   // Soft-fail: if Azure is unreachable, render an empty state, not an error page.
   const [open, completed] = await Promise.all([

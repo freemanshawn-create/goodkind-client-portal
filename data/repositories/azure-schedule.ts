@@ -1,167 +1,129 @@
 /**
  * Azure SQL-backed Production Schedule repository.
  *
- * Maps SAP B1 Batch Manufacturing Module data (@BMM_APSSCHEDULING) into the
- * portal's BatchEntry shape.
+ * Sources the live production schedule from SAP B1's Process/Production tables
+ * (@BMM_PNMAST = batch header, @BMM_PNITEM = batch lines), mirroring the
+ * canonical semantic-layer "90 Day Schedule" query. This replaced the older
+ * @BMM_APSSCHEDULING source, which was stale (it lagged weeks behind and held
+ * almost no forward-dated rows); PNMAST carries the full forward schedule.
  *
- * SAP B1 BMM stores one row per production step. A typical run for a finished
- * good has two related rows tied together by SUPERBATCHNO:
- *   - BATCHTYPE='M' (Mix/Compound) — bulk product on a mixing tank, no CUSTNMBR
- *   - BATCHTYPE='F' (Fill)         — finished units on a fill line, has CUSTNMBR + SONUMBER
+ * We show the finished-good FILL steps: OUTPUT lines (U_LINETYPE = 7) of every
+ * non-cancelled batch step whose output is a finished good (90- item). The
+ * bulk/compound (WIP) steps that feed them are intentionally excluded — clients
+ * only care about the fill runs.
  *
- * To get the user's client-scoped batches we anchor on the F-rows
- * (CUSTNMBR = customer code) and LEFT JOIN to the M-row by SUPERBATCHNO for
- * the compound date.
+ * Scope: the PNMAST tables have no customer column, so a client is scoped by
+ * BRAND via the item code (e.g. items containing "DRS" for Dr. Squatch). This
+ * means brandCodes is REQUIRED — without it we cannot safely scope and return
+ * nothing rather than leak another client's schedule.
  */
 
 import { query, raw } from "@/lib/azure-db";
+import { brandCodeFilter } from "@/data/repositories/item-filters";
 import type { BatchEntry, BatchStatus } from "@/data/types";
 
 const SCHEMA = raw("GKCO_PROD");
 
 interface ScheduleRow {
+  ScheduledDate: Date;
   SuperBatchNo: string | null;
   BatchNo: string;
+  // SAP returns U_SONUMBER as a numeric value (0 when unset), not a string.
+  SONumber: string | number | null;
   ItemKey: string;
+  ProductCode: string | null;
   ItemName: string | null;
-  CompoundDate: Date | null;
-  FillDate: Date;
-  EndDate: Date | null;
-  Yield: number;
-  Unit: string | null;
-  Status: string; // SAP STATUS string
-  ReqShipDate: Date | null;
-  SONumber: string | null;
+  TheoreticalOutput: number;
   ClientPO: string | null;
-  SODueDate: Date | null;
-  Notes: string | null;
 }
 
-async function fetchRows(cardCode: string): Promise<ScheduleRow[]> {
+async function fetchRows(
+  cardCode: string,
+  brandCodes: string[],
+  fromDate: Date
+): Promise<ScheduleRow[]> {
+  const brandFilter = brandCodeFilter("i.U_ITEMCODE", brandCodes);
+
   return query<ScheduleRow>`
-    WITH compoundSteps AS (
-      SELECT
-        SUPERBATCHNO,
-        MIN(STARTDATE) AS CompoundDate
-      FROM ${SCHEMA}.[@BMM_APSSCHEDULING]
-      WHERE BATCHTYPE = 'M'
-        AND SUPERBATCHNO IS NOT NULL AND SUPERBATCHNO <> ''
-      GROUP BY SUPERBATCHNO
-    )
     SELECT
-      fg.SUPERBATCHNO  AS SuperBatchNo,
-      fg.BATCHNO       AS BatchNo,
-      fg.ITEMKEY       AS ItemKey,
-      itm.ItemName     AS ItemName,
-      cs.CompoundDate  AS CompoundDate,
-      fg.STARTDATE     AS FillDate,
-      fg.ENDDATE       AS EndDate,
-      fg.QUANTITY      AS [Yield],
-      fg.UNIT          AS Unit,
-      fg.STATUS        AS Status,
-      fg.REQSHIPDATE   AS ReqShipDate,
-      fg.SONUMBER      AS SONumber,
-      o.NumAtCard      AS ClientPO,
-      o.DocDueDate     AS SODueDate,
-      fg.NOTES         AS Notes
-    FROM ${SCHEMA}.[@BMM_APSSCHEDULING] fg
-    LEFT JOIN compoundSteps cs ON cs.SUPERBATCHNO = fg.SUPERBATCHNO
+      m.U_SCHEDULEDSTARTDATE AS ScheduledDate,
+      m.U_SUPERBATCHNO       AS SuperBatchNo,
+      m.U_BATCHNO            AS BatchNo,
+      m.U_SONUMBER           AS SONumber,
+      i.U_ITEMCODE           AS ItemKey,
+      itm.U_BPREF            AS ProductCode,
+      itm.ItemName           AS ItemName,
+      i.U_STDQTY             AS TheoreticalOutput,
+      o.NumAtCard            AS ClientPO
+    FROM ${SCHEMA}.[@BMM_PNMAST] m
+    INNER JOIN ${SCHEMA}.[@BMM_PNITEM] i ON m.DocEntry = i.DocEntry
+    INNER JOIN ${SCHEMA}.OITM itm        ON i.U_ITEMCODE = itm.ItemCode
     LEFT JOIN ${SCHEMA}.ORDR o
-      ON TRY_CAST(fg.SONUMBER AS INT) = o.DocNum
+      ON TRY_CAST(m.U_SONUMBER AS INT) = o.DocNum
      AND o.CardCode = ${cardCode}
      AND o.CANCELED = 'N'
-    LEFT JOIN ${SCHEMA}.OITM itm ON itm.ItemCode = fg.ITEMKEY
-    WHERE fg.CUSTNMBR = ${cardCode}
-      AND fg.BATCHTYPE = 'F'
-      AND fg.STARTDATE IS NOT NULL
-    ORDER BY fg.STARTDATE
+    WHERE m.U_BATCHSTATUS <> 6
+      AND i.U_LINETYPE = 7
+      AND i.U_ITEMCODE LIKE '90-%'   -- finished-good fill steps only (exclude bulk/WIP)
+      AND m.U_SCHEDULEDSTARTDATE >= ${fromDate}
+      AND ${brandFilter}
+    ORDER BY m.U_SCHEDULEDSTARTDATE, m.U_BATCHNO
   `;
 }
 
 /**
- * Strip "FG, <Brand>, " prefix and any trailing item-code suffix that gets
- * appended by SAP item descriptions.
+ * Strip the "FG, <Brand>, " / "Bulk, <Brand>, " prefix from SAP item
+ * descriptions so the portal shows just the product.
  */
 function cleanItemName(name: string | null, fallback: string): string {
   if (!name) return fallback;
-  return name.replace(/^FG,\s*[^,]+,\s*/i, "").trim();
+  return name.replace(/^(FG|Bulk),\s*[^,]+,\s*/i, "").trim();
 }
 
-/**
- * Map SAP STATUS + dates to portal BatchStatus.
- *
- *  RELEASED            → locked       (production committed)
- *  PART CLOSED         → completed    (some output already produced)
- *  ISSUED              → completed    (materials issued, batch executed)
- *  PARTIAL ALLOCATED   → pending-lock (materials being allocated)
- *  NEW                 → scheduled    (planned but not yet locked in)
- *
- * Anything whose ENDDATE is in the past is forced to 'completed'.
- */
-function mapStatus(sapStatus: string, endDate: Date | null): BatchStatus {
-  const now = Date.now();
-  if (endDate && new Date(endDate).getTime() < now) {
-    return "completed";
-  }
-  switch ((sapStatus ?? "").toUpperCase().trim()) {
-    case "RELEASED":
-      return "locked";
-    case "PART CLOSED":
-    case "ISSUED":
-      return "completed";
-    case "PARTIAL ALLOCATED":
-      return "pending-lock";
-    case "NEW":
-    default:
-      return "scheduled";
-  }
+/** A 90- item is a finished good (FILL step); anything else is a bulk/WIP step. */
+function stepTypeFor(itemKey: string): "fill" | "bulk" {
+  return /^90-/i.test(itemKey) ? "fill" : "bulk";
 }
 
-function brandFromCardName(name: string | null | undefined): string {
-  if (!name) return "";
-  // Strip leading "FG, " / "Bulk, " etc and use the second segment if available
-  return name;
+/** Past scheduled date → completed; otherwise it's still scheduled/upcoming. */
+function statusFor(scheduledDate: Date): BatchStatus {
+  return scheduledDate.getTime() < Date.now() ? "completed" : "scheduled";
 }
 
 function mapRow(row: ScheduleRow): BatchEntry {
-  const fillDate = new Date(row.FillDate);
-  // If we don't have a compound row, fall back to fill date so the column
-  // isn't empty (typical for assembly-only / packaging-only runs).
-  const compoundDate = row.CompoundDate
-    ? new Date(row.CompoundDate)
-    : fillDate;
-
-  const status = mapStatus(row.Status, row.EndDate);
-  const productName = cleanItemName(row.ItemName, row.ItemKey);
-
+  const scheduledDate = new Date(row.ScheduledDate);
+  const so = String(row.SONumber ?? "").trim();
   return {
-    id: `bmm-${row.BatchNo}`,
-    compoundDate,
-    fillDate,
-    yield: Number(row.Yield ?? 0),
-    brand: brandFromCardName(""), // brand isn't carried by the row; portal scopes by user
-    productType: row.Unit ?? "",
-    productName,
-    batchNumber: row.SuperBatchNo ?? row.BatchNo,
-    salesOrder: row.SONumber ?? undefined,
-    purchaseOrder: row.ClientPO ?? undefined,
-    dueDate: row.ReqShipDate
-      ? new Date(row.ReqShipDate)
-      : row.SODueDate
-        ? new Date(row.SODueDate)
-        : undefined,
-    status,
-    // Without an audit trail we don't know exactly when a batch was locked;
-    // for non-locked batches we expose the compound start as the planned
-    // lock-by date so the UI can render "Will lock by ..." consistently.
-    lockDate: status === "locked" ? compoundDate : undefined,
+    id: `pn-${row.BatchNo}-${row.ItemKey}`,
+    scheduledDate,
+    superBatchNo: row.SuperBatchNo ?? "",
+    batchNumber: row.BatchNo,
+    productCode: row.ProductCode ?? "",
+    productName: cleanItemName(row.ItemName, row.ProductCode ?? row.ItemKey),
+    yield: Number(row.TheoreticalOutput ?? 0),
+    stepType: stepTypeFor(row.ItemKey),
+    salesOrder: so && so !== "0" ? so : undefined,
+    clientPO: row.ClientPO ?? undefined,
+    status: statusFor(scheduledDate),
     itemKey: row.ItemKey,
   };
 }
 
+/**
+ * Fetch production-schedule output rows for a client, scoped by brand code(s).
+ * Returns [] when no brand codes are configured (cannot scope safely).
+ *
+ * @param fromDate  Lower bound on scheduled date (e.g. 12 months ago) so the
+ *                  past-batches view has data without scanning all history.
+ */
 export async function getAzureBatchEntries(
-  cardCode: string
+  cardCode: string,
+  brandCodes: string[] | undefined,
+  fromDate: Date
 ): Promise<BatchEntry[]> {
-  const rows = await fetchRows(cardCode);
+  const codes = (brandCodes ?? []).filter(Boolean);
+  if (codes.length === 0) return [];
+
+  const rows = await fetchRows(cardCode, codes, fromDate);
   return rows.map(mapRow);
 }
