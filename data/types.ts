@@ -250,6 +250,34 @@ export interface PurchaseOrder {
   completedDate?: Date;
 }
 
+// -- Reports: Weekly Inventory Walkforward --
+
+/** One item's inventory roll-forward for a week. */
+export interface InventoryWalkforwardRow {
+  itemCode: string;
+  /** Client part code (OITM.U_BPREF). */
+  sku: string;
+  description: string;
+  openingBalance: number;
+  received: number;
+  adjusted: number;
+  cycled: number;
+  produced: number;
+  consumed: number;
+  scrapWarehouse: number;
+  scrapProduction: number;
+  shipped: number;
+  toFromRnD: number;
+  endingBalance: number;
+}
+
+/** The weekly walkforward report: the covered week plus its rows. */
+export interface InventoryWalkforward {
+  weekStart: Date;
+  weekEnd: Date;
+  rows: InventoryWalkforwardRow[];
+}
+
 export type ActivityType =
   | "project_update"
   | "document_uploaded"
