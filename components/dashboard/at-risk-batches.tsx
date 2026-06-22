@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatDate } from "@/lib/format";
+import { formatCalendarDate } from "@/lib/format";
 import { ROUTES } from "@/lib/constants";
 import type { BatchEntry, BomItem } from "@/data/types";
 
@@ -71,7 +71,7 @@ export function AtRiskBatches({ batches, bomItems }: AtRiskBatchesProps) {
                     {batch.productName}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Batch #{batch.batchNumber} · {formatDate(batch.scheduledDate)}
+                    Batch #{batch.batchNumber} · {formatCalendarDate(batch.scheduledDate)}
                   </p>
                 </div>
                 <span className="ml-3 shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">

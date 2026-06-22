@@ -1,7 +1,8 @@
 "use client";
 
 import { Fragment, useState, useMemo, useCallback } from "react";
-import { format, isValid, differenceInCalendarDays, startOfDay } from "date-fns";
+import { isValid, differenceInCalendarDays, startOfDay } from "date-fns";
+import { formatCalendarDate, toCalendarDay } from "@/lib/format";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -37,7 +38,9 @@ interface ScheduleTableProps {
 
 function fmtShortDate(date: Date | undefined): string {
   if (!date || !isValid(date)) return "—";
-  return format(date, "MMM d");
+  // SAP dates arrive as UTC midnight; format the UTC calendar day so the
+  // viewer's timezone can't shift it back a day.
+  return formatCalendarDate(date, "MMM d");
 }
 
 function fmtQty(num: number): string {
@@ -105,7 +108,7 @@ type LockTier = "hard" | "soft" | "open" | "none";
 function getLockTier(entry: BatchEntry): LockTier {
   if (entry.status === "completed") return "none";
   const days = differenceInCalendarDays(
-    startOfDay(entry.scheduledDate),
+    toCalendarDay(entry.scheduledDate),
     startOfDay(new Date())
   );
   if (days <= 14) return "hard";
