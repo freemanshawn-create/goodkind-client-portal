@@ -48,3 +48,30 @@ export function brandCodeFilter(
   const ors = codes.map((c) => `${column} LIKE '%${c}%'`).join(" OR ");
   return raw(`(${ors})`);
 }
+
+/**
+ * Client-component scope for the BOM / component-status query. Components in
+ * the `CLASS-BRAND-SEQ` taxonomy that a client supplies are packaging items in
+ * the 20- class for that brand, e.g. "20-DRS-0123". This restricts a component
+ * item-code column to `20-<BRAND>%` for the given brand codes.
+ *
+ * Unlike brandCodeFilter, this returns an always-FALSE predicate (`1 = 0`)
+ * when no codes are supplied: BOM data must be brand-scoped, so with no brand
+ * we show nothing rather than every client's components.
+ *
+ * @param column  Trusted SQL identifier (e.g. "i.U_ITEMCODE").
+ * @param brandCodes  e.g. ["DRS"]. Empty/undefined → no components.
+ */
+export function componentBrandFilter(
+  column: string,
+  brandCodes?: string[]
+): { __raw: string } {
+  const codes = (brandCodes ?? [])
+    .map((c) => c.toUpperCase().replace(/[^A-Z0-9]/g, ""))
+    .filter(Boolean);
+
+  if (codes.length === 0) return raw("1 = 0");
+
+  const ors = codes.map((c) => `${column} LIKE '20-${c}%'`).join(" OR ");
+  return raw(`(${ors})`);
+}

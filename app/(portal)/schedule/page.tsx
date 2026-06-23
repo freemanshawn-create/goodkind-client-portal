@@ -33,7 +33,7 @@ export default async function SchedulePage() {
   const allBatches = [...upcoming, ...past];
   const bomItems = await safe<BomItem[]>(
     "BOM items",
-    () => getBomItemsForBatches(allBatches),
+    () => getBomItemsForBatches(allBatches, user.brandCodes, user.brands),
     []
   );
 

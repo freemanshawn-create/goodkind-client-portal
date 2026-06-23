@@ -55,7 +55,7 @@ export default async function DashboardPage() {
   // BOM depends on upcomingBatches having loaded successfully
   const bomItems: BomItem[] = await safe(
     "BOM items",
-    () => getBomItemsForBatches(upcomingBatches),
+    () => getBomItemsForBatches(upcomingBatches, user.brandCodes, user.brands),
     []
   );
 
