@@ -211,6 +211,12 @@ export interface BomItem {
   quantityRequired: number;
   quantityOnHand: number;
   quantityInbound: number;
+  /**
+   * Projected running on-hand balance for this component AFTER this batch
+   * consumes it — the "Balance" from the canonical component-status query.
+   * Negative = short by that amount; positive = remaining cushion.
+   */
+  projectedBalance: number;
   inventoryStatus: BomInventoryStatus;
   poNumber?: string;
   expectedDate?: Date;

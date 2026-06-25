@@ -31,6 +31,9 @@ function makeBom(
       quantityRequired: qty,
       quantityOnHand: s.onHand ?? 0,
       quantityInbound: s.inbound ?? 0,
+      // Mock projected balance: positive cushion when covered, short when none.
+      projectedBalance:
+        s.inventoryStatus === "none" ? -qty : s.onHand ?? s.inbound ?? qty,
       inventoryStatus: s.inventoryStatus,
       poNumber: s.poNumber,
       expectedDate: s.expectedDate,

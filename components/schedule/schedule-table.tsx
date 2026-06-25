@@ -174,19 +174,19 @@ function BomDetailPanel({ items }: { items: BomItem[] }) {
             </div>
             <div className="text-[11px] text-muted-foreground">
               {item.inventoryStatus === "on-hand" && (
-                <span>{fmtQty(item.quantityOnHand)} on hand</span>
+                <span>{fmtQty(item.projectedBalance)} projected balance</span>
               )}
               {item.inventoryStatus === "inbound" && (
                 <span>
-                  {fmtQty(item.quantityInbound)} inbound
-                  {item.poNumber && ` (${item.poNumber})`}
+                  {fmtQty(item.projectedBalance)} projected balance
+                  {item.poNumber && ` · PO ${item.poNumber}`}
                   {item.expectedDate &&
                     ` — ETA ${fmtShortDate(item.expectedDate)}`}
                 </span>
               )}
               {item.inventoryStatus === "none" && (
                 <span className="text-red-600">
-                  Needed: {fmtQty(item.quantityRequired)}
+                  Short {fmtQty(Math.abs(item.projectedBalance))}
                 </span>
               )}
             </div>

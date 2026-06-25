@@ -23,15 +23,15 @@
  * brandCodes is REQUIRED — with none we return nothing rather than leak another
  * client's components.
  *
- * Deviations from the literal source query (all toward correctness/safety):
- *   - On-hand and incoming-PO totals are computed as separate keyed CTEs and
- *     joined once, avoiding the row fan-out of joining @BMM_BINDETAIL inside the
- *     event set.
- *   - Incoming POs require the header not be cancelled (OPOR.CANCELED='N') and
- *     are limited to the same 90-day window that the balance nets over, so the
- *     displayed "inbound" qty matches what the status math used.
- *   - A balance of exactly 0 is treated as covered (>= 0), not left
- *     unclassified, consistent with the rest of the portal's >= convention.
+ * This matches the canonical "Batch Component Status" query: same demand/supply
+ * event set, same 90-day window applied before the running sum
+ * (BETWEEN GETDATE() AND DATEADD(day, 90, GETDATE())), same partition/order, and
+ * the same open-PO predicate (LineStatus='O' only). Minor, non-balance-affecting
+ * differences from the literal source:
+ *   - On-hand totals come from a separate keyed CTE joined once, avoiding the
+ *     @BMM_BINDETAIL row fan-out of the inline version (same OH value).
+ *   - A balance of exactly 0 is treated as covered (>= 0); the source CASE
+ *     leaves an exact-0 balance unclassified. Does not occur in practice.
  */
 
 import { query, raw } from "@/lib/azure-db";
@@ -75,7 +75,8 @@ async function fetchComponentStatus(
       GROUP BY bd.U_ITEMCODE
     ),
     incoming AS (
-      -- Open inbound POs landing within the 90-day window.
+      -- Open inbound POs landing within the same 90-day window the balance
+      -- nets over (matches the canonical query: LineStatus='O', no cancel test).
       SELECT p.ItemCode,
              SUM(p.InvQty)     AS InboundQty,
              MIN(p.ShipDate)   AS EarliestDate,
@@ -83,9 +84,7 @@ async function fetchComponentStatus(
       FROM ${SCHEMA}.POR1 p
       INNER JOIN ${SCHEMA}.OPOR h ON h.DocEntry = p.DocEntry
       WHERE p.LineStatus = 'O'
-        AND h.CANCELED = 'N'
-        AND p.ShipDate >= CAST(GETDATE() AS date)
-        AND p.ShipDate <  DATEADD(day, 91, CAST(GETDATE() AS date))
+        AND p.ShipDate BETWEEN GETDATE() AND DATEADD(day, 90, GETDATE())
         AND ${incFilter}
       GROUP BY p.ItemCode
     ),
@@ -100,8 +99,6 @@ async function fetchComponentStatus(
       FROM ${SCHEMA}.[@BMM_PNMAST] m
       INNER JOIN ${SCHEMA}.[@BMM_PNITEM] i ON m.DocEntry = i.DocEntry
       WHERE m.U_BATCHSTATUS IN (1, 2, 3, 4)
-        AND m.U_SCHEDULEDSTARTDATE >= CAST(GETDATE() AS date)
-        AND m.U_SCHEDULEDSTARTDATE <  DATEADD(day, 91, CAST(GETDATE() AS date))
         AND ${demandFilter}
       UNION ALL
       -- Supply: incoming PO quantity (positive change, no demand component).
@@ -114,14 +111,13 @@ async function fetchComponentStatus(
       FROM ${SCHEMA}.POR1 p
       INNER JOIN ${SCHEMA}.OPOR h ON h.DocEntry = p.DocEntry
       WHERE p.LineStatus = 'O'
-        AND h.CANCELED = 'N'
-        AND p.ShipDate >= CAST(GETDATE() AS date)
-        AND p.ShipDate <  DATEADD(day, 91, CAST(GETDATE() AS date))
         AND ${supplyFilter}
     ),
     running AS (
-      -- Cumulative balances per component in date order. On the same date,
-      -- supply (DemandVal = 0) is counted before demand (DemandVal < 0).
+      -- Cumulative balances per component in date order. The 90-day window is
+      -- applied HERE (before the window function), exactly as the canonical
+      -- query does, so the running balance nets only in-window events. On the
+      -- same date, supply (DemandVal = 0) is counted before demand (< 0).
       SELECT e.BatchNo, e.ItemCode, e.ReqQty, e.EventDate, e.DemandVal,
              SUM(e.ChangeVal) OVER (
                PARTITION BY e.ItemCode
@@ -134,6 +130,7 @@ async function fetchComponentStatus(
                ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
              ) AS CumDemand
       FROM events e
+      WHERE e.EventDate BETWEEN GETDATE() AND DATEADD(day, 90, GETDATE())
     )
     SELECT
       r.BatchNo                              AS BatchNo,
@@ -224,7 +221,8 @@ export async function getAzureBomItemsForBatches(
     const required = Number(row.RequiredQty);
     const onHand = Number(row.OnHand);
     const inbound = Number(row.InboundQty);
-    const inventoryStatus = statusFor(Number(row.Balance), Number(row.CheckBalance));
+    const balance = Number(row.Balance);
+    const inventoryStatus = statusFor(balance, Number(row.CheckBalance));
 
     for (const batchId of batchIds) {
       result.push({
@@ -234,6 +232,7 @@ export async function getAzureBomItemsForBatches(
         quantityRequired: required,
         quantityOnHand: onHand,
         quantityInbound: inbound,
+        projectedBalance: balance,
         inventoryStatus,
         poNumber:
           inventoryStatus === "inbound" && row.EarliestPo
