@@ -208,6 +208,10 @@ export interface BomItem {
   id: string;
   batchId: string;
   partName: string;
+  /** Goodkind internal item code (OITM.ItemCode, e.g. "20-DRS-000179"). */
+  gkcItemCode: string;
+  /** Client's own part code (OITM.U_BPREF); "" when not set. */
+  clientItemCode: string;
   quantityRequired: number;
   quantityOnHand: number;
   quantityInbound: number;

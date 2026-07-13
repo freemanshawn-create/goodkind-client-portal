@@ -28,6 +28,8 @@ function makeBom(
       id: `bom-${batchId}-${i}`,
       batchId,
       partName,
+      gkcItemCode: `20-MOCK-${String(i).padStart(6, "0")}`,
+      clientItemCode: `CLI-${i}`,
       quantityRequired: qty,
       quantityOnHand: s.onHand ?? 0,
       quantityInbound: s.inbound ?? 0,

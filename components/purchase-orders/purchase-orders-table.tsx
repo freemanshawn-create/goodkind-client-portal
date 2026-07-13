@@ -42,14 +42,14 @@ function POTable({
   return (
     <Card>
       <CardContent className="p-0">
-        <div className="overflow-x-auto">
+        <div className="max-h-[70vh] overflow-auto">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-card/50">
+            <thead className="sticky top-0 z-10">
+              <tr className="border-b border-border">
                 {TABLE_HEADERS.map((h) => (
                   <th
                     key={h.label}
-                    className={`px-4 py-3 text-left text-xs font-medium text-muted-foreground ${h.className}`}
+                    className={`bg-card px-4 py-3 text-left text-xs font-medium text-muted-foreground ${h.className}`}
                   >
                     {h.label}
                   </th>

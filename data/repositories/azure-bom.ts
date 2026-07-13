@@ -43,6 +43,7 @@ const SCHEMA = raw("GKCO_PROD");
 interface ComponentStatusRow {
   BatchNo: string;
   ItemCode: string;
+  ClientCode: string | null;
   ItemDesc: string | null;
   RequiredQty: number;
   OnHand: number;
@@ -135,6 +136,7 @@ async function fetchComponentStatus(
     SELECT
       r.BatchNo                              AS BatchNo,
       r.ItemCode                             AS ItemCode,
+      itm.U_BPREF                            AS ClientCode,
       itm.ItemName                           AS ItemDesc,
       r.ReqQty                               AS RequiredQty,
       ISNULL(oh.OnHand, 0)                   AS OnHand,
@@ -229,6 +231,8 @@ export async function getAzureBomItemsForBatches(
         id: `bom-${batchId}-${row.ItemCode}`,
         batchId,
         partName: cleanPartName(row.ItemDesc, row.ItemCode, names),
+        gkcItemCode: row.ItemCode,
+        clientItemCode: row.ClientCode ?? "",
         quantityRequired: required,
         quantityOnHand: onHand,
         quantityInbound: inbound,

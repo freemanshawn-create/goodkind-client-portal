@@ -172,6 +172,10 @@ function BomDetailPanel({ items }: { items: BomItem[] }) {
               <span className="text-xs font-medium">{item.partName}</span>
               <StatusDot status={item.inventoryStatus} />
             </div>
+            <div className="text-[10px] font-mono leading-tight text-muted-foreground">
+              <span>GKC {item.gkcItemCode}</span>
+              {item.clientItemCode && <span> · Client {item.clientItemCode}</span>}
+            </div>
             <div className="text-[11px] text-muted-foreground">
               {item.inventoryStatus === "on-hand" && (
                 <span>{fmtQty(item.projectedBalance)} projected balance</span>
@@ -253,14 +257,14 @@ function BatchTable({
   return (
     <Card>
       <CardContent className="p-0">
-        <div className="overflow-x-auto">
+        <div className="max-h-[70vh] overflow-auto">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border bg-card/50">
+            <thead className="sticky top-0 z-10">
+              <tr className="border-b border-border">
                 {TABLE_HEADERS.map((h) => (
                   <th
                     key={h.label}
-                    className={`px-4 py-3 text-left text-xs font-medium text-muted-foreground ${h.className}`}
+                    className={`bg-card px-4 py-3 text-left text-xs font-medium text-muted-foreground ${h.className}`}
                   >
                     {h.label}
                   </th>
